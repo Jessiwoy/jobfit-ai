@@ -122,3 +122,15 @@ Rodar testes:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
+
+Inicializar banco local:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.init_db
+```
+
+Abrir app Streamlit:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app\streamlit_app.py
+```
