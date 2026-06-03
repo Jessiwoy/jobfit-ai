@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 from core.database import get_database_path, initialize_database
-from core.models import ProfileItem
+from core.models import JobSource, ProfileItem
 from repositories.job_sources_repository import JobSourcesRepository
 from repositories.preferences_repository import PreferencesRepository
 from repositories.profile_items_repository import ProfileItemsRepository
@@ -61,7 +61,7 @@ def render_settings() -> None:
         render_profile_items_editor(profile_items_repository, user.id, profile_items)
 
     with sources_tab:
-        render_job_sources_table(sources)
+        render_job_sources_table(sources_repository, sources)
 
 
 def render_profile_form(
@@ -190,20 +190,48 @@ def render_profile_items_editor(
         st.success("Dados reais do curriculo salvos.")
 
 
-def render_job_sources_table(sources) -> None:  # type: ignore[no-untyped-def]
-    st.dataframe(
-        [
-            {
-                "Fonte": source.name,
-                "Label Gmail": source.gmail_label_name,
-                "Ativa": "Sim" if source.enabled else "Nao",
-                "Parser": source.parser_type,
-            }
-            for source in sources
-        ],
+def render_job_sources_table(
+    sources_repository: JobSourcesRepository,
+    sources: list[JobSource],
+) -> None:
+    st.caption("Configure somente labels do Gmail que devem ser usadas como fontes de vagas.")
+
+    rows = [
+        {
+            "Nome": source.name,
+            "Label Gmail": source.gmail_label_name,
+            "Ativa": source.enabled,
+            "Parser": source.parser_type,
+        }
+        for source in sources
+    ]
+
+    edited_rows = st.data_editor(
+        rows,
+        column_config={
+            "Nome": st.column_config.TextColumn("Nome", required=True),
+            "Label Gmail": st.column_config.TextColumn("Label Gmail", required=True),
+            "Ativa": st.column_config.CheckboxColumn("Ativa"),
+            "Parser": st.column_config.SelectboxColumn(
+                "Parser",
+                options=["generic", "linkedin", "indeed"],
+                required=True,
+            ),
+        },
         hide_index=True,
+        num_rows="dynamic",
         use_container_width=True,
+        key="job_sources_editor",
     )
+
+    if st.button("Salvar fontes de vagas"):
+        parsed_sources = parse_job_sources(edited_rows)
+        if not parsed_sources:
+            st.error("Informe ao menos uma fonte com nome e label.")
+            return
+
+        sources_repository.replace_all(parsed_sources)
+        st.success("Fontes de vagas salvas.")
 
 
 def render_sync() -> None:
@@ -241,6 +269,31 @@ def parse_profile_items(user_id: int, rows: list[dict]) -> list[ProfileItem]:
         )
 
     return items
+
+
+def parse_job_sources(rows: list[dict]) -> list[JobSource]:
+    sources = []
+
+    for row in rows:
+        name = str(row.get("Nome") or "").strip()
+        gmail_label_name = str(row.get("Label Gmail") or "").strip()
+        if not name or not gmail_label_name:
+            continue
+
+        parser_type = str(row.get("Parser") or "generic").strip() or "generic"
+
+        sources.append(
+            JobSource(
+                id=0,
+                name=name,
+                gmail_label_name=gmail_label_name,
+                source_type="gmail_label",
+                parser_type=parser_type,
+                enabled=bool(row.get("Ativa", True)),
+            )
+        )
+
+    return sources
 
 
 def parse_optional_float(value: object) -> float | None:
