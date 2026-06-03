@@ -19,6 +19,9 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 
+# Sensitive local references
+references/
+
 # Gmail credentials and tokens
 credentials/*.json
 credentials/token.*
@@ -35,4 +38,3 @@ credentials/token.*
 Thumbs.db
 .idea/
 .vscode/
-
