@@ -65,3 +65,31 @@ class JobSourcesRepository:
                 for row in rows
             ]
 
+    def replace_all(self, sources: list[JobSource]) -> None:
+        with connect(self._database_path) as connection:
+            connection.execute("DELETE FROM job_sources")
+
+            connection.executemany(
+                """
+                INSERT INTO job_sources (
+                    name,
+                    gmail_label_name,
+                    source_type,
+                    parser_type,
+                    enabled
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        source.name,
+                        source.gmail_label_name,
+                        source.source_type,
+                        source.parser_type,
+                        int(source.enabled),
+                    )
+                    for source in sources
+                    if source.name.strip() and source.gmail_label_name.strip()
+                ],
+            )
+

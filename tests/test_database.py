@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from core.database import initialize_database
-from core.models import ProfileItem
+from core.models import JobSource, ProfileItem
 from repositories.job_sources_repository import JobSourcesRepository
 from repositories.preferences_repository import PreferencesRepository
 from repositories.profile_items_repository import ProfileItemsRepository
@@ -29,6 +29,40 @@ def test_default_job_sources_are_created_once(tmp_path: Path) -> None:
 
     assert len(sources) == 2
     assert {source.gmail_label_name for source in sources} == {"Linkedin Jobs", "Indeed Jobs"}
+
+
+def test_job_sources_can_be_replaced(tmp_path: Path) -> None:
+    database_path = tmp_path / "jobfit.db"
+    initialize_database(database_path)
+    repository = JobSourcesRepository(database_path)
+    repository.ensure_default_sources()
+
+    repository.replace_all(
+        [
+            JobSource(
+                id=0,
+                name="Custom",
+                gmail_label_name="Custom Jobs",
+                source_type="gmail_label",
+                parser_type="generic",
+                enabled=True,
+            ),
+            JobSource(
+                id=0,
+                name="Disabled",
+                gmail_label_name="Disabled Jobs",
+                source_type="gmail_label",
+                parser_type="generic",
+                enabled=False,
+            ),
+        ]
+    )
+
+    sources = repository.list_all()
+
+    assert {source.name for source in sources} == {"Custom", "Disabled"}
+    assert {source.gmail_label_name for source in sources} == {"Custom Jobs", "Disabled Jobs"}
+    assert any(not source.enabled for source in sources)
 
 
 def test_preferences_can_be_saved_and_loaded(tmp_path: Path) -> None:
