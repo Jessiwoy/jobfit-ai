@@ -96,3 +96,29 @@ Commits devem seguir Conventional Commits, por exemplo:
 O projeto deve usar ambiente virtual Python local em `.venv`.
 
 Arquivos sensíveis ou locais, como credenciais do Gmail, tokens OAuth, banco SQLite e `.venv`, não devem ser versionados.
+
+### Setup
+
+Criar ambiente virtual:
+
+```powershell
+python -m venv .venv
+```
+
+Instalar dependências:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Rodar lint:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+```
+
+Rodar testes:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+```
