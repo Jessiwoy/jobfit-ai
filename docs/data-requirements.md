@@ -4,10 +4,9 @@ Este documento lista os dados que precisamos coletar do usuário antes ou durant
 
 ## Labels do Gmail
 
-Labels atuais:
+Label atual:
 
-- `Linkedin Jobs`
-- `Indeed Jobs`
+- `Job Alerts`
 
 Precisamos confirmar:
 
@@ -15,6 +14,8 @@ Precisamos confirmar:
 - Se alguma label é aninhada dentro de outra.
 - Se os filtros do Gmail já aplicam essas labels automaticamente.
 - Se os filtros usam a opção "Nunca enviar para Spam".
+
+Todos os alertas de sites de vagas devem ser direcionados para a label `Job Alerts`.
 
 ## Gmail API
 
@@ -30,6 +31,18 @@ credentials/credentials.json
 ```
 
 Esse arquivo não deve ser versionado no Git.
+
+O token OAuth local sera salvo em:
+
+```text
+credentials/token.json
+```
+
+O escopo do Gmail deve ser somente leitura:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
+```
 
 ## Perfil Profissional
 
@@ -164,4 +177,3 @@ Podemos configurar também:
 - Áreas a evitar.
 - Score mínimo padrão no dashboard.
 - Idade máxima da vaga em dias.
-

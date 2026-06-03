@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import streamlit as st
+from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH
 from core.database import get_database_path, initialize_database
 from core.models import JobSource, ProfileItem
 from repositories.job_sources_repository import JobSourcesRepository
 from repositories.preferences_repository import PreferencesRepository
 from repositories.profile_items_repository import ProfileItemsRepository
 from repositories.user_repository import UserRepository
+from services.gmail_service import GmailCredentialsMissingError, GmailService
 
 
 def main() -> None:
@@ -51,7 +53,7 @@ def render_settings() -> None:
     sources = sources_repository.list_all()
 
     profile_tab, resume_data_tab, sources_tab = st.tabs(
-        ["Perfil e preferencias", "Dados reais do curriculo", "Fontes de vagas"]
+        ["Perfil e preferencias", "Dados reais do curriculo", "Label de coleta"]
     )
 
     with profile_tab:
@@ -194,14 +196,15 @@ def render_job_sources_table(
     sources_repository: JobSourcesRepository,
     sources: list[JobSource],
 ) -> None:
-    st.caption("Configure somente labels do Gmail que devem ser usadas como fontes de vagas.")
+    st.caption(
+        "Configure a label unica do Gmail que recebera todos os alertas de vagas."
+    )
 
     rows = [
         {
             "Nome": source.name,
             "Label Gmail": source.gmail_label_name,
             "Ativa": source.enabled,
-            "Parser": source.parser_type,
         }
         for source in sources
     ]
@@ -212,11 +215,6 @@ def render_job_sources_table(
             "Nome": st.column_config.TextColumn("Nome", required=True),
             "Label Gmail": st.column_config.TextColumn("Label Gmail", required=True),
             "Ativa": st.column_config.CheckboxColumn("Ativa"),
-            "Parser": st.column_config.SelectboxColumn(
-                "Parser",
-                options=["generic", "linkedin", "indeed"],
-                required=True,
-            ),
         },
         hide_index=True,
         num_rows="dynamic",
@@ -224,19 +222,78 @@ def render_job_sources_table(
         key="job_sources_editor",
     )
 
-    if st.button("Salvar fontes de vagas"):
+    if st.button("Salvar label de coleta"):
         parsed_sources = parse_job_sources(edited_rows)
         if not parsed_sources:
             st.error("Informe ao menos uma fonte com nome e label.")
             return
 
         sources_repository.replace_all(parsed_sources)
-        st.success("Fontes de vagas salvas.")
+        st.success("Label de coleta salva.")
 
 
 def render_sync() -> None:
     st.header("Sincronizacao")
-    st.info("A sincronizacao com Gmail sera implementada no epico de coleta.")
+
+    db_path = get_database_path()
+    sources_repository = JobSourcesRepository(db_path)
+    sources_repository.ensure_default_sources()
+    active_sources = [source for source in sources_repository.list_all() if source.enabled]
+
+    st.subheader("Gmail")
+    st.write(f"Credenciais: `{GMAIL_CREDENTIALS_PATH}`")
+    st.write(f"Token local: `{GMAIL_TOKEN_PATH}`")
+
+    if GMAIL_CREDENTIALS_PATH.exists():
+        st.success("Arquivo de credenciais encontrado.")
+    else:
+        st.warning("Arquivo de credenciais ainda nao encontrado.")
+
+    st.subheader("Label ativa")
+    if not active_sources:
+        st.info("Nenhuma fonte ativa configurada.")
+        return
+
+    st.dataframe(
+        [
+            {
+                "Fonte": source.name,
+                "Label Gmail": source.gmail_label_name,
+            }
+            for source in active_sources
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    if st.button("Validar labels no Gmail"):
+        validate_gmail_labels(active_sources)
+
+
+def validate_gmail_labels(active_sources: list[JobSource]) -> None:
+    label_names = [source.gmail_label_name for source in active_sources]
+
+    try:
+        results = GmailService().validate_labels(label_names)
+    except GmailCredentialsMissingError as error:
+        st.error(str(error))
+        return
+    except Exception as error:  # pragma: no cover - defensive UI boundary
+        st.error(f"Nao foi possivel validar as labels: {error}")
+        return
+
+    st.dataframe(
+        [
+            {
+                "Label Gmail": result.label_name,
+                "Encontrada": "Sim" if result.exists else "Nao",
+                "ID": result.label_id or "",
+            }
+            for result in results
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
 
 
 def parse_lines(value: str) -> list[str]:
@@ -280,15 +337,13 @@ def parse_job_sources(rows: list[dict]) -> list[JobSource]:
         if not name or not gmail_label_name:
             continue
 
-        parser_type = str(row.get("Parser") or "generic").strip() or "generic"
-
         sources.append(
             JobSource(
                 id=0,
                 name=name,
                 gmail_label_name=gmail_label_name,
                 source_type="gmail_label",
-                parser_type=parser_type,
+                parser_type="generic",
                 enabled=bool(row.get("Ativa", True)),
             )
         )

@@ -51,12 +51,11 @@ O sistema deve processar somente labels do Gmail configuradas pelo usuário.
 
 Ele não deve varrer a caixa de entrada inteira.
 
-Labels esperadas inicialmente:
+Label esperada inicialmente:
 
-- `Linkedin Jobs`
-- `Indeed Jobs`
+- `Job Alerts`
 
-Novas labels devem ser suportadas por configuração.
+O sistema deve ler somente essa label configurada. A origem real da vaga deve ser detectada depois pelo remetente, links e conteúdo do e-mail.
 
 ## Abordagem de Desenvolvimento
 

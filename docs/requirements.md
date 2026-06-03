@@ -26,22 +26,23 @@ O sistema não deve:
 
 ## Fontes de Vagas
 
-As fontes de vagas serão labels configuradas no Gmail.
+As vagas serão coletadas inicialmente de uma única label configurada no Gmail.
 
-Labels iniciais:
+Label inicial:
 
-- `Linkedin Jobs`
-- `Indeed Jobs`
+- `Job Alerts`
 
-O sistema deve permitir adicionar novas labels no futuro.
+O sistema deve permitir alterar essa label no futuro, mas a coleta padrão deve permanecer simples.
 
-Cada fonte deve armazenar:
+Cada configuração de coleta deve armazenar:
 
-- Nome da fonte.
+- Nome da fonte de coleta.
 - Nome da label no Gmail.
 - Status ativo/inativo.
-- Tipo de parser, quando existir.
+- Tipo de parser padrão, quando existir.
 - Data da última sincronização.
+
+A origem real da vaga, como LinkedIn, Indeed ou outro site, deve ser detectada pelo remetente, links e conteúdo do e-mail.
 
 ## Fluxo Principal
 
@@ -52,6 +53,7 @@ Ler somente e-mails das labels configuradas e ativas.
 Extrair e salvar:
 
 - Fonte da vaga.
+- Provedor detectado da vaga, quando possível.
 - Metadados do e-mail.
 - Texto bruto do e-mail.
 - HTML bruto do e-mail, quando disponível.
@@ -148,4 +150,3 @@ A tela de configurações deve permitir editar:
 - Termos indesejados.
 - Fontes de vagas por label do Gmail.
 - Experiências e habilidades reais que podem ser usadas nos materiais.
-

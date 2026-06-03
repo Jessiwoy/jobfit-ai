@@ -7,16 +7,14 @@ from core.models import JobSource
 
 DEFAULT_SOURCES = [
     {
-        "name": "LinkedIn",
-        "gmail_label_name": "Linkedin Jobs",
-        "parser_type": "linkedin",
-    },
-    {
-        "name": "Indeed",
-        "gmail_label_name": "Indeed Jobs",
-        "parser_type": "indeed",
+        "name": "Job Alerts",
+        "gmail_label_name": "Job Alerts",
+        "parser_type": "generic",
     },
 ]
+
+LEGACY_DEFAULT_LABELS = {"Linkedin Jobs", "Indeed Jobs"}
+LEGACY_SINGLE_LABELS = {"job-alerts"}
 
 
 class JobSourcesRepository:
@@ -25,6 +23,14 @@ class JobSourcesRepository:
 
     def ensure_default_sources(self) -> None:
         with connect(self._database_path) as connection:
+            rows = connection.execute(
+                "SELECT name, gmail_label_name FROM job_sources ORDER BY name"
+            ).fetchall()
+
+            existing_labels = {row["gmail_label_name"] for row in rows}
+            if existing_labels in (LEGACY_DEFAULT_LABELS, LEGACY_SINGLE_LABELS):
+                connection.execute("DELETE FROM job_sources")
+
             for source in DEFAULT_SOURCES:
                 connection.execute(
                     """
