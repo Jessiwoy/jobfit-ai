@@ -45,6 +45,7 @@ jobfit-ai/
     job_sources_repository.py
     user_repository.py
     preferences_repository.py
+    profile_items_repository.py
     email_messages_repository.py
     jobs_repository.py
     analyses_repository.py

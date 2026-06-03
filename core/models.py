@@ -35,3 +35,14 @@ class JobSource:
     parser_type: str
     enabled: bool
 
+
+@dataclass(frozen=True)
+class ProfileItem:
+    id: int | None
+    user_id: int
+    item_type: str
+    name: str
+    level: str | None = None
+    years_experience: float | None = None
+    evidence: str | None = None
+
