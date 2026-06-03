@@ -5,10 +5,9 @@ def test_parse_job_sources_ignores_rows_without_name_or_label() -> None:
     sources = parse_job_sources(
         [
             {
-                "Nome": "LinkedIn",
-                "Label Gmail": "Linkedin Jobs",
+                "Nome": "Job Alerts",
+                "Label Gmail": "Job Alerts",
                 "Ativa": True,
-                "Parser": "linkedin",
             },
             {
                 "Nome": "",
@@ -26,9 +25,9 @@ def test_parse_job_sources_ignores_rows_without_name_or_label() -> None:
     )
 
     assert len(sources) == 1
-    assert sources[0].name == "LinkedIn"
-    assert sources[0].gmail_label_name == "Linkedin Jobs"
-    assert sources[0].parser_type == "linkedin"
+    assert sources[0].name == "Job Alerts"
+    assert sources[0].gmail_label_name == "Job Alerts"
+    assert sources[0].parser_type == "generic"
 
 
 def test_parse_job_sources_defaults_parser_to_generic() -> None:
@@ -38,7 +37,6 @@ def test_parse_job_sources_defaults_parser_to_generic() -> None:
                 "Nome": "Custom",
                 "Label Gmail": "Custom Jobs",
                 "Ativa": False,
-                "Parser": "",
             }
         ]
     )

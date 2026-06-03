@@ -133,17 +133,18 @@ Contém comandos manuais para executar etapas específicas fora da interface.
 
 ## Regra de Coleta no Gmail
 
-O serviço do Gmail deve ler somente as labels configuradas em `job_sources`.
+O serviço do Gmail deve ler somente a label configurada em `job_sources`.
 
 O sistema não deve buscar mensagens na caixa toda.
 
-Fluxo esperado para cada fonte ativa:
+Fluxo esperado para a fonte ativa:
 
 1. Resolver a label pelo nome no Gmail.
 2. Buscar mensagens dessa label.
 3. Ignorar mensagens já salvas pelo `gmail_message_id`.
 4. Salvar conteúdo bruto do e-mail.
-5. Marcar status de processamento.
+5. Detectar o provedor provável, como LinkedIn ou Indeed, a partir do remetente, links ou conteúdo.
+6. Marcar status de processamento.
 
 ## Estratégia de Parsers
 
@@ -151,9 +152,9 @@ Começar com um parser genérico e adicionar parsers específicos conforme neces
 
 Seleção de parser:
 
-- `Linkedin Jobs` usa parser do LinkedIn quando disponível.
-- `Indeed Jobs` usa parser do Indeed quando disponível.
-- Fontes desconhecidas usam parser genérico.
+- E-mails detectados como LinkedIn usam parser do LinkedIn quando disponível.
+- E-mails detectados como Indeed usam parser do Indeed quando disponível.
+- Provedores desconhecidos usam parser genérico.
 
 O parser deve tolerar dados incompletos e preservar o conteúdo bruto para reprocessamento futuro.
 

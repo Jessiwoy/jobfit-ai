@@ -22,19 +22,19 @@ Critério de aceite:
 
 ## Épico 2: Fontes de Vagas e Labels do Gmail
 
-Objetivo: suportar labels configuráveis como fontes de vagas.
+Objetivo: suportar a label configurável de coleta de vagas.
 
 Escopo esperado:
 
 - Tabela `job_sources`.
-- Adicionar, editar, ativar e desativar labels.
+- Adicionar, editar, ativar e desativar a label de coleta.
 - Resolver IDs das labels no Gmail.
 - Validar se a label existe.
 
 Critério de aceite:
 
-- O usuário consegue configurar `Linkedin Jobs` e `Indeed Jobs`.
-- O sistema lê somente fontes ativas.
+- O usuário consegue configurar `Job Alerts`.
+- O sistema lê somente a label ativa.
 
 ## Épico 3: Coleta no Gmail
 
@@ -46,6 +46,7 @@ Escopo esperado:
 - Buscar mensagens por label configurada.
 - Salvar texto e HTML brutos.
 - Ignorar mensagens já processadas.
+- Detectar o provedor provável da vaga pelo e-mail.
 - Registrar status e erros.
 
 Critério de aceite:
@@ -155,4 +156,3 @@ Critério de aceite:
 
 - Falhas comuns são visíveis e recuperáveis.
 - A lógica principal possui testes focados.
-

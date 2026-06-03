@@ -50,16 +50,17 @@ O sistema não deve buscar vagas diretamente no LinkedIn ou em sites de vagas.
 
 A fonte inicial serão alertas de vagas recebidos por e-mail e organizados por labels do Gmail.
 
-Labels iniciais:
+Label inicial:
 
-- `Linkedin Jobs`
-- `Indeed Jobs`
+- `Job Alerts`
 
 O sistema deve permitir adicionar novas labels futuramente.
 
 Regra importante:
 
-O JobFit AI deve ler somente as labels configuradas. Ele não deve varrer a caixa de entrada inteira.
+O JobFit AI deve ler somente a label configurada. Ele não deve varrer a caixa de entrada inteira.
+
+A origem real da vaga, como LinkedIn, Indeed ou outro site, deve ser detectada depois pelo remetente, links e conteúdo do e-mail.
 
 ## Documentação do Projeto
 
@@ -133,4 +134,26 @@ Abrir app Streamlit:
 
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run app\streamlit_app.py
+```
+
+### Gmail API
+
+Para validar labels e coletar e-mails futuramente, coloque o OAuth Client de aplicativo desktop em:
+
+```text
+credentials/credentials.json
+```
+
+O token local sera gerado em:
+
+```text
+credentials/token.json
+```
+
+Esses arquivos sao locais e nao devem ser versionados.
+
+O escopo usado pela aplicacao e somente leitura:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
 ```
