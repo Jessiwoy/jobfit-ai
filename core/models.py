@@ -37,6 +37,42 @@ class JobSource:
 
 
 @dataclass(frozen=True)
+class EmailMessage:
+    id: int | None
+    source_id: int
+    gmail_message_id: str
+    gmail_thread_id: str | None
+    gmail_label_name: str
+    subject: str | None = None
+    sender: str | None = None
+    received_at: str | None = None
+    raw_text: str | None = None
+    raw_html: str | None = None
+    detected_provider: str | None = None
+    processed_status: str = "new"
+    error_message: str | None = None
+
+
+@dataclass(frozen=True)
+class Job:
+    id: int | None
+    source_id: int
+    email_message_id: int | None
+    title: str
+    company: str | None = None
+    location: str | None = None
+    work_mode: str | None = None
+    seniority: str | None = None
+    job_url: str | None = None
+    description: str | None = None
+    posted_at: str | None = None
+    source_job_id: str | None = None
+    content_hash: str = ""
+    status: str = "new"
+    provider: str | None = None
+
+
+@dataclass(frozen=True)
 class ProfileItem:
     id: int | None
     user_id: int
@@ -45,4 +81,3 @@ class ProfileItem:
     level: str | None = None
     years_experience: float | None = None
     evidence: str | None = None
-

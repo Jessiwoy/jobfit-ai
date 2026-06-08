@@ -4,11 +4,19 @@ import streamlit as st
 from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH
 from core.database import get_database_path, initialize_database
 from core.models import JobSource, ProfileItem
+from repositories.email_messages_repository import EmailMessagesRepository
 from repositories.job_sources_repository import JobSourcesRepository
+from repositories.jobs_repository import JobsRepository
 from repositories.preferences_repository import PreferencesRepository
 from repositories.profile_items_repository import ProfileItemsRepository
 from repositories.user_repository import UserRepository
-from services.gmail_service import GmailCredentialsMissingError, GmailService
+from services.gmail_service import (
+    GmailCredentialsMissingError,
+    GmailLabelNotFoundError,
+    GmailService,
+)
+from services.gmail_sync_service import GmailSyncService
+from services.job_processing_service import JobProcessingService
 
 
 def main() -> None:
@@ -34,7 +42,32 @@ def main() -> None:
 
 def render_dashboard() -> None:
     st.header("Dashboard")
-    st.info("A lista de vagas sera exibida aqui depois da integracao com Gmail.")
+
+    jobs_repository = JobsRepository(get_database_path())
+    jobs = jobs_repository.list_recent(limit=100)
+
+    if not jobs:
+        st.info("Nenhuma vaga salva ainda. Sincronize e processe e-mails para popular o dashboard.")
+        return
+
+    st.metric("Vagas salvas", jobs_repository.count_all())
+    st.dataframe(
+        [
+            {
+                "Cargo": job.title,
+                "Empresa": job.company or "",
+                "Localizacao": job.location or "",
+                "Modalidade": job.work_mode or "",
+                "Senioridade": job.seniority or "",
+                "Provedor": job.provider or "",
+                "Status": job.status,
+                "Link": job.job_url or "",
+            }
+            for job in jobs
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
 
 
 def render_settings() -> None:
@@ -196,9 +229,7 @@ def render_job_sources_table(
     sources_repository: JobSourcesRepository,
     sources: list[JobSource],
 ) -> None:
-    st.caption(
-        "Configure a label unica do Gmail que recebera todos os alertas de vagas."
-    )
+    st.caption("Configure a label unica do Gmail que recebera todos os alertas de vagas.")
 
     rows = [
         {
@@ -237,6 +268,8 @@ def render_sync() -> None:
 
     db_path = get_database_path()
     sources_repository = JobSourcesRepository(db_path)
+    messages_repository = EmailMessagesRepository(db_path)
+    jobs_repository = JobsRepository(db_path)
     sources_repository.ensure_default_sources()
     active_sources = [source for source in sources_repository.list_all() if source.enabled]
 
@@ -269,6 +302,55 @@ def render_sync() -> None:
     if st.button("Validar labels no Gmail"):
         validate_gmail_labels(active_sources)
 
+    st.subheader("Coleta")
+    max_results = st.number_input(
+        "Limite de e-mails por label",
+        min_value=1,
+        max_value=100,
+        value=25,
+        step=5,
+    )
+
+    if st.button("Buscar novos e-mails"):
+        sync_gmail_messages(int(max_results))
+
+    email_metric, pending_metric, jobs_metric = st.columns(3)
+    email_metric.metric("E-mails salvos", messages_repository.count_all())
+    pending_metric.metric("E-mails novos", messages_repository.count_by_status("new"))
+    jobs_metric.metric("Vagas criadas", jobs_repository.count_all())
+
+    st.subheader("Processamento")
+    process_limit = st.number_input(
+        "Limite de e-mails para processar",
+        min_value=1,
+        max_value=100,
+        value=50,
+        step=5,
+    )
+
+    if st.button("Processar e-mails salvos"):
+        process_saved_emails(int(process_limit))
+
+    st.subheader("Ultimos e-mails")
+    recent_messages = messages_repository.list_recent(limit=10)
+
+    if recent_messages:
+        st.dataframe(
+            [
+                {
+                    "Recebido em": message.received_at or "",
+                    "Assunto": message.subject or "",
+                    "Remetente": message.sender or "",
+                    "Label": message.gmail_label_name,
+                    "Provedor": message.detected_provider or "",
+                    "Status": message.processed_status,
+                }
+                for message in recent_messages
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+
 
 def validate_gmail_labels(active_sources: list[JobSource]) -> None:
     label_names = [source.gmail_label_name for source in active_sources]
@@ -293,6 +375,56 @@ def validate_gmail_labels(active_sources: list[JobSource]) -> None:
         ],
         hide_index=True,
         use_container_width=True,
+    )
+
+
+def sync_gmail_messages(max_results_per_source: int) -> None:
+    try:
+        summary = GmailSyncService(get_database_path()).sync_active_sources(
+            max_results_per_source=max_results_per_source
+        )
+    except GmailCredentialsMissingError as error:
+        st.error(str(error))
+        return
+    except GmailLabelNotFoundError as error:
+        st.error(str(error))
+        return
+    except Exception as error:  # pragma: no cover - defensive UI boundary
+        st.error(f"Nao foi possivel sincronizar o Gmail: {error}")
+        return
+
+    if not summary.results:
+        st.info("Nenhuma fonte ativa configurada.")
+        return
+
+    st.success(f"Sincronizacao concluida. {summary.inserted_count} e-mail(s) novo(s) salvo(s).")
+    st.dataframe(
+        [
+            {
+                "Fonte": result.source_name,
+                "Label Gmail": result.label_name,
+                "Novos encontrados": result.fetched_count,
+                "Salvos": result.inserted_count,
+                "Ignorados": result.skipped_count,
+            }
+            for result in summary.results
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
+
+
+def process_saved_emails(limit: int) -> None:
+    summary = JobProcessingService(get_database_path()).process_new_messages(limit=limit)
+
+    if summary.processed_messages == 0:
+        st.info("Nao ha e-mails novos para processar.")
+        return
+
+    st.success(
+        "Processamento concluido. "
+        f"{summary.created_jobs} vaga(s) criada(s), "
+        f"{summary.failed_messages} erro(s)."
     )
 
 
@@ -363,4 +495,3 @@ def parse_optional_float(value: object) -> float | None:
 
 if __name__ == "__main__":
     main()
-

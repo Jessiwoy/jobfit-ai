@@ -99,3 +99,14 @@ class JobSourcesRepository:
                 ],
             )
 
+    def mark_synced(self, source_id: int) -> None:
+        with connect(self._database_path) as connection:
+            connection.execute(
+                """
+                UPDATE job_sources
+                SET last_synced_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (source_id,),
+            )

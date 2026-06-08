@@ -66,6 +66,24 @@ def test_job_sources_can_be_replaced(tmp_path: Path) -> None:
     assert any(not source.enabled for source in sources)
 
 
+def test_job_source_can_be_marked_as_synced(tmp_path: Path) -> None:
+    database_path = tmp_path / "jobfit.db"
+    initialize_database(database_path)
+    repository = JobSourcesRepository(database_path)
+    repository.ensure_default_sources()
+    source = repository.list_all()[0]
+
+    repository.mark_synced(source.id)
+
+    with connect(database_path) as connection:
+        row = connection.execute(
+            "SELECT last_synced_at FROM job_sources WHERE id = ?",
+            (source.id,),
+        ).fetchone()
+
+    assert row["last_synced_at"] is not None
+
+
 def test_legacy_default_job_sources_are_replaced_by_single_collection_label(
     tmp_path: Path,
 ) -> None:
