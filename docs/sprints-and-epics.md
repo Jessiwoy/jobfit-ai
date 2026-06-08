@@ -14,8 +14,8 @@ Status por épico:
 
 - Épico 1: entregue.
 - Épico 2: entregue.
-- Épico 3: em andamento, com primeira versão funcional já implementada.
-- Épico 4: em andamento, com parser genérico inicial já implementado.
+- Épico 3: em validação, com primeira versão funcional já implementada.
+- Épico 4: em andamento, com parsers iniciais e reprocessamento de falhas já implementados.
 - Épico 5: pendente.
 - Épico 6: pendente.
 - Épico 7: pendente, exceto visualização básica criada para apoiar validação dos épicos anteriores.
@@ -33,6 +33,8 @@ Entregas já existentes:
 - Detecção inicial de provedor por remetente, links e conteúdo.
 - Processamento manual de e-mails salvos.
 - Parser genérico inicial para criar vagas.
+- Parsers iniciais por provedor para LinkedIn e Indeed.
+- Reprocessamento manual de e-mails com erro de extração.
 - Deduplicação inicial por `gmail_message_id` e `content_hash`.
 
 Próximas entregas, em ordem:
