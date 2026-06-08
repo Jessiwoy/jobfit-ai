@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from repositories.email_messages_repository import EmailMessagesRepository
+from repositories.job_sources_repository import JobSourcesRepository
 from repositories.jobs_repository import JobsRepository
 
-from services.email_parser import GenericEmailParser
+from services.parsers import select_email_parser
+
+NO_JOBS_EXTRACTED_ERROR = "Nenhuma vaga foi extraida do e-mail."
 
 
 @dataclass(frozen=True)
@@ -19,11 +22,12 @@ class JobProcessingSummary:
 class JobProcessingService:
     def __init__(self, database_path: Path) -> None:
         self._messages_repository = EmailMessagesRepository(database_path)
+        self._sources_repository = JobSourcesRepository(database_path)
         self._jobs_repository = JobsRepository(database_path)
-        self._parser = GenericEmailParser()
 
     def process_new_messages(self, *, limit: int = 50) -> JobProcessingSummary:
         messages = self._messages_repository.list_by_status("new", limit=limit)
+        sources_by_id = {source.id: source for source in self._sources_repository.list_all()}
         created_jobs = 0
         failed_messages = 0
 
@@ -32,7 +36,13 @@ class JobProcessingService:
                 continue
 
             try:
-                jobs = self._parser.parse(message)
+                parser = select_email_parser(message, sources_by_id.get(message.source_id))
+                jobs = parser.parse(message)
+                if not jobs:
+                    failed_messages += 1
+                    self._messages_repository.mark_failed(message.id, NO_JOBS_EXTRACTED_ERROR)
+                    continue
+
                 created_jobs += self._jobs_repository.insert_many_ignore_existing(jobs)
                 self._messages_repository.mark_processed(message.id)
             except Exception as error:

@@ -6,7 +6,7 @@ from pathlib import Path
 from repositories.email_messages_repository import EmailMessagesRepository
 from repositories.job_sources_repository import JobSourcesRepository
 
-from services.gmail_service import GmailService
+from services.gmail_service import GmailCredentialsMissingError, GmailService
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,7 @@ class GmailSourceSyncResult:
     fetched_count: int
     inserted_count: int
     skipped_count: int
+    error_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,10 @@ class GmailSyncSummary:
     @property
     def fetched_count(self) -> int:
         return sum(result.fetched_count for result in self.results)
+
+    @property
+    def failed_count(self) -> int:
+        return sum(1 for result in self.results if result.error_message)
 
 
 class GmailSyncService:
@@ -51,22 +56,36 @@ class GmailSyncService:
         results = []
 
         for source in active_sources:
-            messages = self._gmail_service.fetch_messages_for_source(
-                source,
-                max_results=max_results_per_source,
-                existing_message_ids=existing_ids,
-            )
-            inserted_count = self._messages_repository.insert_many_ignore_existing(messages)
-            self._sources_repository.mark_synced(source.id)
-            existing_ids.update(message.gmail_message_id for message in messages)
-            results.append(
-                GmailSourceSyncResult(
-                    source_name=source.name,
-                    label_name=source.gmail_label_name,
-                    fetched_count=len(messages),
-                    inserted_count=inserted_count,
-                    skipped_count=len(messages) - inserted_count,
+            try:
+                messages = self._gmail_service.fetch_messages_for_source(
+                    source,
+                    max_results=max_results_per_source,
+                    existing_message_ids=existing_ids,
                 )
-            )
+                inserted_count = self._messages_repository.insert_many_ignore_existing(messages)
+                self._sources_repository.mark_synced(source.id)
+                existing_ids.update(message.gmail_message_id for message in messages)
+                results.append(
+                    GmailSourceSyncResult(
+                        source_name=source.name,
+                        label_name=source.gmail_label_name,
+                        fetched_count=len(messages),
+                        inserted_count=inserted_count,
+                        skipped_count=len(messages) - inserted_count,
+                    )
+                )
+            except GmailCredentialsMissingError:
+                raise
+            except Exception as error:
+                results.append(
+                    GmailSourceSyncResult(
+                        source_name=source.name,
+                        label_name=source.gmail_label_name,
+                        fetched_count=0,
+                        inserted_count=0,
+                        skipped_count=0,
+                        error_message=str(error),
+                    )
+                )
 
         return GmailSyncSummary(results=results)
