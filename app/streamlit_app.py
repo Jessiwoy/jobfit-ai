@@ -344,6 +344,7 @@ def render_sync() -> None:
                     "Label": message.gmail_label_name,
                     "Provedor": message.detected_provider or "",
                     "Status": message.processed_status,
+                    "Erro": message.error_message or "",
                 }
                 for message in recent_messages
             ],
@@ -398,14 +399,19 @@ def sync_gmail_messages(max_results_per_source: int) -> None:
         return
 
     st.success(f"Sincronizacao concluida. {summary.inserted_count} e-mail(s) novo(s) salvo(s).")
+    if summary.failed_count:
+        st.warning(f"{summary.failed_count} fonte(s) tiveram erro durante a sincronizacao.")
+
     st.dataframe(
         [
             {
                 "Fonte": result.source_name,
                 "Label Gmail": result.label_name,
+                "Status": "Erro" if result.error_message else "OK",
                 "Novos encontrados": result.fetched_count,
                 "Salvos": result.inserted_count,
                 "Ignorados": result.skipped_count,
+                "Erro": result.error_message or "",
             }
             for result in summary.results
         ],

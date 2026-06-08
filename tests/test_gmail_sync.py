@@ -33,6 +33,24 @@ class FakeGmailService:
         ][:max_results]
 
 
+class PartiallyFailingGmailService(FakeGmailService):
+    def fetch_messages_for_source(
+        self,
+        source: JobSource,
+        *,
+        max_results: int,
+        existing_message_ids: set[str] | None = None,
+    ) -> list[EmailMessage]:
+        if source.gmail_label_name == "Broken Jobs":
+            raise ValueError("Label indisponivel")
+
+        return super().fetch_messages_for_source(
+            source,
+            max_results=max_results,
+            existing_message_ids=existing_message_ids,
+        )
+
+
 def test_email_messages_repository_inserts_and_ignores_duplicates(tmp_path: Path) -> None:
     database_path = tmp_path / "jobfit.db"
     initialize_database(database_path)
@@ -71,3 +89,40 @@ def test_gmail_sync_saves_only_new_messages(tmp_path: Path) -> None:
     assert second_summary.inserted_count == 0
     assert second_summary.fetched_count == 0
     assert EmailMessagesRepository(database_path).count_all() == 1
+
+
+def test_gmail_sync_keeps_source_errors_in_summary(tmp_path: Path) -> None:
+    database_path = tmp_path / "jobfit.db"
+    initialize_database(database_path)
+    sources_repository = JobSourcesRepository(database_path)
+    sources_repository.replace_all(
+        [
+            JobSource(
+                id=0,
+                name="Job Alerts",
+                gmail_label_name="Job Alerts",
+                source_type="gmail_label",
+                parser_type="generic",
+                enabled=True,
+            ),
+            JobSource(
+                id=0,
+                name="Broken",
+                gmail_label_name="Broken Jobs",
+                source_type="gmail_label",
+                parser_type="generic",
+                enabled=True,
+            ),
+        ]
+    )
+    sync_service = GmailSyncService(
+        database_path,
+        gmail_service=PartiallyFailingGmailService(),  # type: ignore[arg-type]
+    )
+
+    summary = sync_service.sync_active_sources(max_results_per_source=25)
+    errors_by_source = {result.source_name: result.error_message for result in summary.results}
+
+    assert summary.inserted_count == 1
+    assert summary.failed_count == 1
+    assert errors_by_source == {"Broken": "Label indisponivel", "Job Alerts": None}
