@@ -1,5 +1,46 @@
 # Sprints e Épicos
 
+## Estado Atual do Projeto
+
+Atualizado em 2026-06-08.
+
+Regra de sequenciamento:
+
+- Seguir os épicos em ordem.
+- Não iniciar o Épico 5 antes de fechar os critérios principais dos Épicos 3 e 4.
+- Não iniciar score, dashboard avançado ou materiais antes de concluir coleta, extração e limpeza.
+
+Status por épico:
+
+- Épico 1: entregue.
+- Épico 2: entregue.
+- Épico 3: em andamento, com primeira versão funcional já implementada.
+- Épico 4: em andamento, com parser genérico inicial já implementado.
+- Épico 5: pendente.
+- Épico 6: pendente.
+- Épico 7: pendente, exceto visualização básica criada para apoiar validação dos épicos anteriores.
+- Épico 8: pendente.
+- Épico 9: pendente.
+
+Entregas já existentes:
+
+- Banco SQLite inicial com migrations.
+- Configurações básicas no Streamlit.
+- Cadastro de perfil, preferências, itens reais de perfil e fontes Gmail.
+- Validação de labels do Gmail.
+- Coleta de e-mails somente de labels ativas configuradas.
+- Persistência de texto e HTML brutos dos e-mails.
+- Detecção inicial de provedor por remetente, links e conteúdo.
+- Processamento manual de e-mails salvos.
+- Parser genérico inicial para criar vagas.
+- Deduplicação inicial por `gmail_message_id` e `content_hash`.
+
+Próximas entregas, em ordem:
+
+1. Fechar Épico 3 com tratamento mais claro de falhas de coleta e status por fonte.
+2. Fechar Épico 4 com organização de parsers por provedor, seleção de parser e falhas de extração visíveis.
+3. Iniciar Épico 5 somente depois disso.
+
 ## Épico 1: Fundação do Projeto
 
 Objetivo: criar a base local do projeto sem integração com Gmail.
