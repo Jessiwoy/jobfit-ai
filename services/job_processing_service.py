@@ -26,7 +26,13 @@ class JobProcessingService:
         self._jobs_repository = JobsRepository(database_path)
 
     def process_new_messages(self, *, limit: int = 50) -> JobProcessingSummary:
-        messages = self._messages_repository.list_by_status("new", limit=limit)
+        return self._process_messages_by_status("new", limit=limit)
+
+    def reprocess_failed_messages(self, *, limit: int = 50) -> JobProcessingSummary:
+        return self._process_messages_by_status("error", limit=limit)
+
+    def _process_messages_by_status(self, status: str, *, limit: int) -> JobProcessingSummary:
+        messages = self._messages_repository.list_by_status(status, limit=limit)
         sources_by_id = {source.id: source for source in self._sources_repository.list_all()}
         created_jobs = 0
         failed_messages = 0

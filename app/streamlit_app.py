@@ -314,9 +314,10 @@ def render_sync() -> None:
     if st.button("Buscar novos e-mails"):
         sync_gmail_messages(int(max_results))
 
-    email_metric, pending_metric, jobs_metric = st.columns(3)
+    email_metric, pending_metric, error_metric, jobs_metric = st.columns(4)
     email_metric.metric("E-mails salvos", messages_repository.count_all())
     pending_metric.metric("E-mails novos", messages_repository.count_by_status("new"))
+    error_metric.metric("E-mails com erro", messages_repository.count_by_status("error"))
     jobs_metric.metric("Vagas criadas", jobs_repository.count_all())
 
     st.subheader("Processamento")
@@ -330,6 +331,9 @@ def render_sync() -> None:
 
     if st.button("Processar e-mails salvos"):
         process_saved_emails(int(process_limit))
+
+    if st.button("Reprocessar e-mails com erro"):
+        reprocess_failed_emails(int(process_limit))
 
     st.subheader("Ultimos e-mails")
     recent_messages = messages_repository.list_recent(limit=10)
@@ -429,6 +433,20 @@ def process_saved_emails(limit: int) -> None:
 
     st.success(
         "Processamento concluido. "
+        f"{summary.created_jobs} vaga(s) criada(s), "
+        f"{summary.failed_messages} erro(s)."
+    )
+
+
+def reprocess_failed_emails(limit: int) -> None:
+    summary = JobProcessingService(get_database_path()).reprocess_failed_messages(limit=limit)
+
+    if summary.processed_messages == 0:
+        st.info("Nao ha e-mails com erro para reprocessar.")
+        return
+
+    st.success(
+        "Reprocessamento concluido. "
         f"{summary.created_jobs} vaga(s) criada(s), "
         f"{summary.failed_messages} erro(s)."
     )
