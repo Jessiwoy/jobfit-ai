@@ -14,8 +14,8 @@ Status por épico:
 
 - Épico 1: entregue.
 - Épico 2: entregue.
-- Épico 3: em validação, com primeira versão funcional já implementada.
-- Épico 4: em andamento, com parsers iniciais e reprocessamento de falhas já implementados.
+- Épico 3: entregue.
+- Épico 4: entregue.
 - Épico 5: pendente.
 - Épico 6: pendente.
 - Épico 7: pendente, exceto visualização básica criada para apoiar validação dos épicos anteriores.
@@ -39,9 +39,9 @@ Entregas já existentes:
 
 Próximas entregas, em ordem:
 
-1. Fechar Épico 3 com tratamento mais claro de falhas de coleta e status por fonte.
-2. Fechar Épico 4 com organização de parsers por provedor, seleção de parser e falhas de extração visíveis.
-3. Iniciar Épico 5 somente depois disso.
+1. Iniciar Épico 5 com limpeza e deduplicação de vagas.
+2. Implementar controle de status para vagas duplicadas, antigas ou incompatíveis.
+3. Iniciar Épico 6 somente depois de fechar os critérios principais do Épico 5.
 
 ## Épico 1: Fundação do Projeto
 
