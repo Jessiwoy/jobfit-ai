@@ -4,7 +4,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.models import Job, JobAnalysis, Preferences, ProfileItem
+from core.analysis_models import JobAnalysis
+from core.models import Job, Preferences, ProfileItem
 from repositories.analyses_repository import AnalysesRepository
 from repositories.jobs_repository import JobsRepository
 from repositories.preferences_repository import PreferencesRepository

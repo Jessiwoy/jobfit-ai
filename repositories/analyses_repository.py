@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core.analysis_models import JobAnalysis
 from core.database import connect
-from core.models import JobAnalysis
 
 from repositories.json_fields import decode_string_list, encode_json
 
