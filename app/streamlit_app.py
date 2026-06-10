@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import streamlit as st
 from core.analysis_models import JobAnalysis
 from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH
@@ -677,7 +679,7 @@ def score_jobs() -> None:
 
 
 def render_scoring_criteria_summary() -> None:
-    summary = ScoringService(get_database_path()).get_criteria_summary()
+    summary = get_scoring_criteria_summary()
 
     criteria_metrics = st.columns(4)
     criteria_metrics[0].metric("Cargos", summary.desired_titles)
@@ -689,6 +691,41 @@ def render_scoring_criteria_summary() -> None:
         st.warning(
             "Configure perfil, preferências ou dados reais antes de calcular scores."
         )
+
+
+def get_scoring_criteria_summary() -> SimpleNamespace:
+    scoring_service = ScoringService(get_database_path())
+    get_criteria_summary = getattr(scoring_service, "get_criteria_summary", None)
+    if callable(get_criteria_summary):
+        return get_criteria_summary()
+
+    db_path = get_database_path()
+    user = UserRepository(db_path).get_or_create_default_user()
+    preferences = PreferencesRepository(db_path).get_by_user_id(user.id)
+    profile_items = ProfileItemsRepository(db_path).list_by_user_id(user.id)
+    summary = SimpleNamespace(
+        desired_titles=len(preferences.desired_titles),
+        seniority=len(preferences.seniority),
+        technologies=len(preferences.technologies),
+        work_modes=len(preferences.work_modes),
+        locations=len(preferences.locations),
+        required_terms=len(preferences.required_terms),
+        undesired_terms=len(preferences.undesired_terms),
+        profile_items=len(profile_items),
+    )
+    summary.can_score = any(
+        [
+            summary.desired_titles,
+            summary.seniority,
+            summary.technologies,
+            summary.work_modes,
+            summary.locations,
+            summary.required_terms,
+            summary.undesired_terms,
+            summary.profile_items,
+        ]
+    )
+    return summary
 
 
 def render_score_analysis_summary(analyses_repository: AnalysesRepository) -> None:
