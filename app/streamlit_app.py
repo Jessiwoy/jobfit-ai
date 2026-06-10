@@ -351,12 +351,12 @@ def render_sync() -> None:
     jobs_metric.metric("Vagas criadas", jobs_repository.count_all())
 
     job_status_metrics = st.columns(4)
-    job_status_metrics[0].metric("Vagas novas", jobs_repository.count_by_status("new"))
-    job_status_metrics[1].metric("Duplicadas", jobs_repository.count_by_status("duplicate"))
-    job_status_metrics[2].metric("Antigas", jobs_repository.count_by_status("old"))
+    job_status_metrics[0].metric("Vagas novas", count_jobs_by_status(jobs_repository, "new"))
+    job_status_metrics[1].metric("Duplicadas", count_jobs_by_status(jobs_repository, "duplicate"))
+    job_status_metrics[2].metric("Antigas", count_jobs_by_status(jobs_repository, "old"))
     job_status_metrics[3].metric(
         "Incompatíveis",
-        jobs_repository.count_by_status("incompatible"),
+        count_jobs_by_status(jobs_repository, "incompatible"),
     )
 
     st.subheader("Processamento")
@@ -524,6 +524,14 @@ def format_job_status(status: str) -> str:
 
 def format_email_status(status: str) -> str:
     return EMAIL_STATUS_LABELS.get(status, status)
+
+
+def count_jobs_by_status(repository: JobsRepository, status: str) -> int:
+    count_by_status = getattr(repository, "count_by_status", None)
+    if callable(count_by_status):
+        return int(count_by_status(status))
+
+    return sum(1 for job in repository.list_recent(limit=10000) if job.status == status)
 
 
 def parse_lines(value: str) -> list[str]:
