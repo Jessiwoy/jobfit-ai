@@ -7,6 +7,12 @@ from core.database import connect
 
 from repositories.json_fields import decode_string_list, encode_json
 
+SCORE_RANGES = {
+    "0-49": (0, 49),
+    "50-79": (50, 79),
+    "80-100": (80, 100),
+}
+
 
 class AnalysesRepository:
     def __init__(self, database_path: Path) -> None:
@@ -63,6 +69,36 @@ class AnalysesRepository:
             before = connection.total_changes
             connection.execute("DELETE FROM job_analyses")
             return connection.total_changes - before
+
+    def count_by_classification(self) -> dict[str, int]:
+        with connect(self._database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT classification, COUNT(*) AS count
+                FROM job_analyses
+                GROUP BY classification
+                ORDER BY classification
+                """
+            ).fetchall()
+
+        return {row["classification"]: int(row["count"]) for row in rows}
+
+    def count_by_score_range(self) -> dict[str, int]:
+        counts = {}
+
+        with connect(self._database_path) as connection:
+            for label, (minimum_score, maximum_score) in SCORE_RANGES.items():
+                row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM job_analyses
+                    WHERE score BETWEEN ? AND ?
+                    """,
+                    (minimum_score, maximum_score),
+                ).fetchone()
+                counts[label] = int(row["count"])
+
+        return counts
 
     def get_by_job_id(self, job_id: int) -> JobAnalysis | None:
         with connect(self._database_path) as connection:

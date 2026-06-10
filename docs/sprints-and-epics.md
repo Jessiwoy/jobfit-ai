@@ -43,6 +43,7 @@ Entregas já existentes:
 - Proteção para não calcular scores quando perfil, preferências e dados reais ainda não estiverem configurados.
 - Limpeza de scores antigos quando o recálculo é solicitado sem critérios configurados.
 - Resumo de critérios configurados antes do recálculo de scores.
+- Resumo de scores calculados por classificação e faixa de score.
 - Dashboard com filtros de score mínimo e classificação.
 - Dashboard em padrão master-detail com tabela compacta e painel de detalhes da vaga selecionada.
 

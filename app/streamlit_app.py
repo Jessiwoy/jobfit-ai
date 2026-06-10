@@ -518,6 +518,7 @@ def render_sync() -> None:
 
     st.subheader("Score")
     render_scoring_criteria_summary()
+    render_score_analysis_summary(analyses_repository)
 
     if st.button("Recalcular scores"):
         score_jobs()
@@ -688,6 +689,25 @@ def render_scoring_criteria_summary() -> None:
         st.warning(
             "Configure perfil, preferências ou dados reais antes de calcular scores."
         )
+
+
+def render_score_analysis_summary(analyses_repository: AnalysesRepository) -> None:
+    if analyses_repository.count_all() == 0:
+        return
+
+    st.write("Resumo dos scores calculados")
+    classification_counts = analyses_repository.count_by_classification()
+    score_range_counts = analyses_repository.count_by_score_range()
+
+    classification_columns = st.columns(3)
+    classification_columns[0].metric("Aplicar", classification_counts.get("Aplicar", 0))
+    classification_columns[1].metric("Avaliar", classification_counts.get("Avaliar", 0))
+    classification_columns[2].metric("Ignorar", classification_counts.get("Ignorar", 0))
+
+    range_columns = st.columns(3)
+    range_columns[0].metric("Score 0-49", score_range_counts.get("0-49", 0))
+    range_columns[1].metric("Score 50-79", score_range_counts.get("50-79", 0))
+    range_columns[2].metric("Score 80-100", score_range_counts.get("80-100", 0))
 
 
 def format_job_status(status: str) -> str:
