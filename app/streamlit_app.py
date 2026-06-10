@@ -517,6 +517,8 @@ def render_sync() -> None:
         cleanup_jobs(int(max_age_days))
 
     st.subheader("Score")
+    render_scoring_criteria_summary()
+
     if st.button("Recalcular scores"):
         score_jobs()
 
@@ -664,6 +666,21 @@ def score_jobs() -> None:
         return
 
     st.success(f"Score recalculado para {summary.analyzed_jobs} vaga(s).")
+
+
+def render_scoring_criteria_summary() -> None:
+    summary = ScoringService(get_database_path()).get_criteria_summary()
+
+    criteria_metrics = st.columns(4)
+    criteria_metrics[0].metric("Cargos", summary.desired_titles)
+    criteria_metrics[1].metric("Tecnologias", summary.technologies)
+    criteria_metrics[2].metric("Modalidades", summary.work_modes)
+    criteria_metrics[3].metric("Dados reais", summary.profile_items)
+
+    if not summary.can_score:
+        st.warning(
+            "Configure perfil, preferências ou dados reais antes de calcular scores."
+        )
 
 
 def format_job_status(status: str) -> str:
