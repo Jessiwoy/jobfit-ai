@@ -16,7 +16,7 @@ Status por épico:
 - Épico 2: entregue.
 - Épico 3: entregue.
 - Épico 4: entregue.
-- Épico 5: em andamento.
+- Épico 5: entregue.
 - Épico 6: pendente.
 - Épico 7: pendente, exceto visualização básica criada para apoiar validação dos épicos anteriores.
 - Épico 8: pendente.
@@ -38,12 +38,13 @@ Entregas já existentes:
 - Deduplicação inicial por `gmail_message_id` e `content_hash`.
 - Limpeza manual inicial de vagas por status interno: `duplicate`, `old` e `incompatible`, exibidos na interface como duplicada, antiga e incompatível.
 - Dashboard com filtro de status para ocultar vagas que deixaram de ser novas oportunidades.
+- Validação da limpeza com banco local: 42 vagas revisadas, 13 duplicadas marcadas e 29 mantidas como novas.
 
 Próximas entregas, em ordem:
 
-1. Validar a limpeza do Épico 5 com dados reais coletados do Gmail.
-2. Ajustar regras de incompatibilidade e idade máxima se necessário.
-3. Iniciar Épico 6 somente depois de fechar os critérios principais do Épico 5.
+1. Iniciar Épico 6 com score determinístico de compatibilidade.
+2. Gerar pontos fortes, gaps e motivo da recomendação.
+3. Atualizar o dashboard para exibir score e classificação.
 
 ## Épico 1: Fundação do Projeto
 
