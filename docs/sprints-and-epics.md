@@ -17,7 +17,7 @@ Status por épico:
 - Épico 3: entregue.
 - Épico 4: entregue.
 - Épico 5: entregue.
-- Épico 6: pendente.
+- Épico 6: em andamento.
 - Épico 7: pendente, exceto visualização básica criada para apoiar validação dos épicos anteriores.
 - Épico 8: pendente.
 - Épico 9: pendente.
@@ -39,12 +39,14 @@ Entregas já existentes:
 - Limpeza manual inicial de vagas por status interno: `duplicate`, `old` e `incompatible`, exibidos na interface como duplicada, antiga e incompatível.
 - Dashboard com filtro de status para ocultar vagas que deixaram de ser novas oportunidades.
 - Validação da limpeza com banco local: 42 vagas revisadas, 13 duplicadas marcadas e 29 mantidas como novas.
+- Score determinístico inicial salvo em `job_analyses`, com classificação `Aplicar`, `Avaliar` ou `Ignorar`.
+- Proteção para não calcular scores quando perfil, preferências e dados reais ainda não estiverem configurados.
 
 Próximas entregas, em ordem:
 
-1. Iniciar Épico 6 com score determinístico de compatibilidade.
-2. Gerar pontos fortes, gaps e motivo da recomendação.
-3. Atualizar o dashboard para exibir score e classificação.
+1. Configurar preferências e dados reais para validar scores com vagas locais.
+2. Ajustar pesos e explicações do score conforme o resultado real.
+3. Fechar Épico 6 depois que score, pontos fortes, gaps e motivo estiverem coerentes.
 
 ## Épico 1: Fundação do Projeto
 
