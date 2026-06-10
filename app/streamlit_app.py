@@ -63,13 +63,13 @@ def render_dashboard() -> None:
     st.header("Dashboard")
 
     jobs_repository = JobsRepository(get_database_path())
-    st.write("Status")
-    status_columns = st.columns(len(JOB_STATUS_LABELS))
-    selected_status_labels = [
-        label
-        for column, label in zip(status_columns, JOB_STATUS_LABELS.values(), strict=True)
-        if column.checkbox(label, value=label == JOB_STATUS_LABELS["new"])
-    ]
+    selected_status_labels = st.multiselect(
+        "Status",
+        options=list(JOB_STATUS_LABELS.values()),
+        default=[JOB_STATUS_LABELS["new"]],
+        placeholder="Selecione um ou mais status",
+        max_selections=len(JOB_STATUS_LABELS),
+    )
     selected_statuses = [
         status
         for status, label in JOB_STATUS_LABELS.items()
@@ -85,17 +85,13 @@ def render_dashboard() -> None:
         step=5,
     )
 
-    st.write("Classificação")
-    classification_columns = st.columns(len(CLASSIFICATION_FILTER_LABELS))
-    selected_classifications = [
-        label
-        for column, label in zip(
-            classification_columns,
-            CLASSIFICATION_FILTER_LABELS,
-            strict=True,
-        )
-        if column.checkbox(label, value=True)
-    ]
+    selected_classifications = st.multiselect(
+        "Classificação",
+        options=CLASSIFICATION_FILTER_LABELS,
+        default=CLASSIFICATION_FILTER_LABELS,
+        placeholder="Selecione uma ou mais classificações",
+        max_selections=len(CLASSIFICATION_FILTER_LABELS),
+    )
 
     jobs = [
         job
