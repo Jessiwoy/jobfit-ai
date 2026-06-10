@@ -42,6 +42,7 @@ Entregas já existentes:
 - Score determinístico inicial salvo em `job_analyses`, com classificação `Aplicar`, `Avaliar` ou `Ignorar`.
 - Proteção para não calcular scores quando perfil, preferências e dados reais ainda não estiverem configurados.
 - Limpeza de scores antigos quando o recálculo é solicitado sem critérios configurados.
+- Limpeza de scores antigos quando preferências ou dados reais são alterados.
 - Resumo de critérios configurados antes do recálculo de scores.
 - Resumo de scores calculados por classificação e faixa de score.
 - Dashboard com filtros de score mínimo e classificação.

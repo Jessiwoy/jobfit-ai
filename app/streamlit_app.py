@@ -238,6 +238,7 @@ def render_settings() -> None:
     preferences_repository = PreferencesRepository(db_path)
     profile_items_repository = ProfileItemsRepository(db_path)
     sources_repository = JobSourcesRepository(db_path)
+    analyses_repository = AnalysesRepository(db_path)
 
     user = user_repository.get_or_create_default_user()
     preferences = preferences_repository.get_by_user_id(user.id)
@@ -250,10 +251,21 @@ def render_settings() -> None:
     )
 
     with profile_tab:
-        render_profile_form(user_repository, preferences_repository, user, preferences)
+        render_profile_form(
+            user_repository,
+            preferences_repository,
+            analyses_repository,
+            user,
+            preferences,
+        )
 
     with resume_data_tab:
-        render_profile_items_editor(profile_items_repository, user.id, profile_items)
+        render_profile_items_editor(
+            profile_items_repository,
+            analyses_repository,
+            user.id,
+            profile_items,
+        )
 
     with sources_tab:
         render_job_sources_table(sources_repository, sources)
@@ -262,6 +274,7 @@ def render_settings() -> None:
 def render_profile_form(
     user_repository: UserRepository,
     preferences_repository: PreferencesRepository,
+    analyses_repository: AnalysesRepository,
     user,
     preferences,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -330,11 +343,13 @@ def render_profile_form(
             required_terms=parse_lines(required_terms),
             undesired_terms=parse_lines(undesired_terms),
         )
+        clear_scores_after_criteria_change(analyses_repository)
         st.success("Configuracoes salvas.")
 
 
 def render_profile_items_editor(
     repository: ProfileItemsRepository,
+    analyses_repository: AnalysesRepository,
     user_id: int,
     profile_items: list[ProfileItem],
 ) -> None:
@@ -382,6 +397,7 @@ def render_profile_items_editor(
 
     if st.button("Salvar dados reais do curriculo"):
         repository.replace_for_user(user_id, parse_profile_items(user_id, edited_rows))
+        clear_scores_after_criteria_change(analyses_repository)
         st.success("Dados reais do curriculo salvos.")
 
 
@@ -421,6 +437,12 @@ def render_job_sources_table(
 
         sources_repository.replace_all(parsed_sources)
         st.success("Label de coleta salva.")
+
+
+def clear_scores_after_criteria_change(analyses_repository: AnalysesRepository) -> None:
+    deleted_count = analyses_repository.delete_all()
+    if deleted_count:
+        st.info(f"{deleted_count} score(s) antigo(s) removido(s). Recalcule os scores.")
 
 
 def render_sync() -> None:
