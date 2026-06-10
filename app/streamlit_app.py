@@ -16,7 +16,21 @@ from services.gmail_service import (
     GmailService,
 )
 from services.gmail_sync_service import GmailSyncService
+from services.job_cleanup_service import JobCleanupService
 from services.job_processing_service import JobProcessingService
+
+JOB_STATUS_LABELS = {
+    "new": "Nova",
+    "duplicate": "Duplicada",
+    "old": "Antiga",
+    "incompatible": "Incompatível",
+}
+
+EMAIL_STATUS_LABELS = {
+    "new": "Novo",
+    "processed": "Processado",
+    "error": "Erro",
+}
 
 
 def main() -> None:
@@ -44,10 +58,26 @@ def render_dashboard() -> None:
     st.header("Dashboard")
 
     jobs_repository = JobsRepository(get_database_path())
-    jobs = jobs_repository.list_recent(limit=100)
+    st.write("Status")
+    status_columns = st.columns(len(JOB_STATUS_LABELS))
+    selected_status_labels = [
+        label
+        for column, label in zip(status_columns, JOB_STATUS_LABELS.values(), strict=True)
+        if column.checkbox(label, value=label == JOB_STATUS_LABELS["new"])
+    ]
+    selected_statuses = [
+        status
+        for status, label in JOB_STATUS_LABELS.items()
+        if label in selected_status_labels
+    ]
+    jobs = [
+        job
+        for job in jobs_repository.list_recent(limit=100)
+        if job.status in selected_statuses
+    ]
 
     if not jobs:
-        st.info("Nenhuma vaga salva ainda. Sincronize e processe e-mails para popular o dashboard.")
+        st.info("Nenhuma vaga encontrada para os filtros atuais.")
         return
 
     st.metric("Vagas salvas", jobs_repository.count_all())
@@ -60,7 +90,7 @@ def render_dashboard() -> None:
                 "Modalidade": job.work_mode or "",
                 "Senioridade": job.seniority or "",
                 "Provedor": job.provider or "",
-                "Status": job.status,
+                "Status": format_job_status(job.status),
                 "Link": job.job_url or "",
             }
             for job in jobs
@@ -320,6 +350,15 @@ def render_sync() -> None:
     error_metric.metric("E-mails com erro", messages_repository.count_by_status("error"))
     jobs_metric.metric("Vagas criadas", jobs_repository.count_all())
 
+    job_status_metrics = st.columns(4)
+    job_status_metrics[0].metric("Vagas novas", jobs_repository.count_by_status("new"))
+    job_status_metrics[1].metric("Duplicadas", jobs_repository.count_by_status("duplicate"))
+    job_status_metrics[2].metric("Antigas", jobs_repository.count_by_status("old"))
+    job_status_metrics[3].metric(
+        "Incompatíveis",
+        jobs_repository.count_by_status("incompatible"),
+    )
+
     st.subheader("Processamento")
     process_limit = st.number_input(
         "Limite de e-mails para processar",
@@ -335,6 +374,18 @@ def render_sync() -> None:
     if st.button("Reprocessar e-mails com erro"):
         reprocess_failed_emails(int(process_limit))
 
+    st.subheader("Limpeza")
+    max_age_days = st.number_input(
+        "Idade maxima da vaga em dias",
+        min_value=1,
+        max_value=365,
+        value=45,
+        step=5,
+    )
+
+    if st.button("Limpar e deduplicar vagas"):
+        cleanup_jobs(int(max_age_days))
+
     st.subheader("Ultimos e-mails")
     recent_messages = messages_repository.list_recent(limit=10)
 
@@ -347,7 +398,7 @@ def render_sync() -> None:
                     "Remetente": message.sender or "",
                     "Label": message.gmail_label_name,
                     "Provedor": message.detected_provider or "",
-                    "Status": message.processed_status,
+                    "Status": format_email_status(message.processed_status),
                     "Erro": message.error_message or "",
                 }
                 for message in recent_messages
@@ -450,6 +501,29 @@ def reprocess_failed_emails(limit: int) -> None:
         f"{summary.created_jobs} vaga(s) criada(s), "
         f"{summary.failed_messages} erro(s)."
     )
+
+
+def cleanup_jobs(max_age_days: int) -> None:
+    summary = JobCleanupService(get_database_path()).cleanup_jobs(max_age_days=max_age_days)
+
+    if summary.reviewed_jobs == 0:
+        st.info("Nao ha vagas para limpar.")
+        return
+
+    st.success(
+        "Limpeza concluida. "
+        f"{summary.duplicate_jobs} duplicada(s), "
+        f"{summary.old_jobs} antiga(s), "
+        f"{summary.incompatible_jobs} incompatível(is)."
+    )
+
+
+def format_job_status(status: str) -> str:
+    return JOB_STATUS_LABELS.get(status, status)
+
+
+def format_email_status(status: str) -> str:
+    return EMAIL_STATUS_LABELS.get(status, status)
 
 
 def parse_lines(value: str) -> list[str]:
