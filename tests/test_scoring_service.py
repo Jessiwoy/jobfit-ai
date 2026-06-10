@@ -141,6 +141,56 @@ def test_scoring_service_skips_when_no_criteria_are_configured(tmp_path: Path) -
     assert AnalysesRepository(database_path).count_all() == 0
 
 
+def test_scoring_service_reports_empty_criteria_summary(tmp_path: Path) -> None:
+    database_path = tmp_path / "jobfit.db"
+    initialize_database(database_path)
+
+    summary = ScoringService(database_path).get_criteria_summary()
+
+    assert summary.can_score is False
+    assert summary.desired_titles == 0
+    assert summary.profile_items == 0
+
+
+def test_scoring_service_reports_configured_criteria_summary(tmp_path: Path) -> None:
+    database_path = tmp_path / "jobfit.db"
+    initialize_database(database_path)
+    user = UserRepository(database_path).get_or_create_default_user()
+    PreferencesRepository(database_path).upsert(
+        user_id=user.id,
+        desired_titles=["Frontend Developer"],
+        seniority=["Pleno"],
+        technologies=["React", "TypeScript"],
+        work_modes=["Remoto"],
+        locations=["Brasil"],
+        required_terms=["Dashboard"],
+        undesired_terms=["WordPress"],
+    )
+    ProfileItemsRepository(database_path).replace_for_user(
+        user.id,
+        [
+            ProfileItem(
+                id=None,
+                user_id=user.id,
+                item_type="technology",
+                name="React",
+            )
+        ],
+    )
+
+    summary = ScoringService(database_path).get_criteria_summary()
+
+    assert summary.can_score is True
+    assert summary.desired_titles == 1
+    assert summary.seniority == 1
+    assert summary.technologies == 2
+    assert summary.work_modes == 1
+    assert summary.locations == 1
+    assert summary.required_terms == 1
+    assert summary.undesired_terms == 1
+    assert summary.profile_items == 1
+
+
 def _job(
     *,
     job_id: int,

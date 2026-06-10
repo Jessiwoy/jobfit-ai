@@ -20,6 +20,33 @@ class ScoringSummary:
     skipped_jobs: int = 0
 
 
+@dataclass(frozen=True)
+class ScoringCriteriaSummary:
+    desired_titles: int
+    seniority: int
+    technologies: int
+    work_modes: int
+    locations: int
+    required_terms: int
+    undesired_terms: int
+    profile_items: int
+
+    @property
+    def can_score(self) -> bool:
+        return any(
+            [
+                self.desired_titles,
+                self.seniority,
+                self.technologies,
+                self.work_modes,
+                self.locations,
+                self.required_terms,
+                self.undesired_terms,
+                self.profile_items,
+            ]
+        )
+
+
 class ScoringService:
     def __init__(self, database_path: Path) -> None:
         self._jobs_repository = JobsRepository(database_path)
@@ -47,6 +74,22 @@ class ScoringService:
             )
 
         return ScoringSummary(reviewed_jobs=len(jobs), analyzed_jobs=len(jobs))
+
+    def get_criteria_summary(self) -> ScoringCriteriaSummary:
+        user = self._user_repository.get_or_create_default_user()
+        preferences = self._preferences_repository.get_by_user_id(user.id)
+        profile_items = self._profile_items_repository.list_by_user_id(user.id)
+
+        return ScoringCriteriaSummary(
+            desired_titles=len(preferences.desired_titles),
+            seniority=len(preferences.seniority),
+            technologies=len(preferences.technologies),
+            work_modes=len(preferences.work_modes),
+            locations=len(preferences.locations),
+            required_terms=len(preferences.required_terms),
+            undesired_terms=len(preferences.undesired_terms),
+            profile_items=len(profile_items),
+        )
 
 
 def build_job_analysis(
