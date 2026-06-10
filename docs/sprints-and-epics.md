@@ -2,7 +2,7 @@
 
 ## Estado Atual do Projeto
 
-Atualizado em 2026-06-08.
+Atualizado em 2026-06-10.
 
 Regra de sequenciamento:
 
@@ -16,7 +16,7 @@ Status por épico:
 - Épico 2: entregue.
 - Épico 3: entregue.
 - Épico 4: entregue.
-- Épico 5: pendente.
+- Épico 5: em andamento.
 - Épico 6: pendente.
 - Épico 7: pendente, exceto visualização básica criada para apoiar validação dos épicos anteriores.
 - Épico 8: pendente.
@@ -36,11 +36,13 @@ Entregas já existentes:
 - Parsers iniciais por provedor para LinkedIn e Indeed.
 - Reprocessamento manual de e-mails com erro de extração.
 - Deduplicação inicial por `gmail_message_id` e `content_hash`.
+- Limpeza manual inicial de vagas por status interno: `duplicate`, `old` e `incompatible`, exibidos na interface como duplicada, antiga e incompatível.
+- Dashboard com filtro de status para ocultar vagas que deixaram de ser novas oportunidades.
 
 Próximas entregas, em ordem:
 
-1. Iniciar Épico 5 com limpeza e deduplicação de vagas.
-2. Implementar controle de status para vagas duplicadas, antigas ou incompatíveis.
+1. Validar a limpeza do Épico 5 com dados reais coletados do Gmail.
+2. Ajustar regras de incompatibilidade e idade máxima se necessário.
 3. Iniciar Épico 6 somente depois de fechar os critérios principais do Épico 5.
 
 ## Épico 1: Fundação do Projeto
