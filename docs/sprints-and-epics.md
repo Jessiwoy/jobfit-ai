@@ -42,12 +42,13 @@ Entregas já existentes:
 - Score determinístico inicial salvo em `job_analyses`, com classificação `Aplicar`, `Avaliar` ou `Ignorar`.
 - Proteção para não calcular scores quando perfil, preferências e dados reais ainda não estiverem configurados.
 - Dashboard com filtros de score mínimo e classificação.
+- Dashboard em padrão master-detail com tabela compacta e painel de detalhes da vaga selecionada.
 
 Próximas entregas, em ordem:
 
-1. Antecipar recorte do Épico 7: transformar o Dashboard em tabela compacta com painel de detalhes da vaga selecionada.
-2. Configurar preferências e dados reais para validar scores com vagas locais.
-3. Ajustar pesos do score conforme o resultado real e fechar o Épico 6 quando os scores estiverem coerentes.
+1. Configurar preferências e dados reais para validar scores com vagas locais.
+2. Ajustar pesos do score conforme o resultado real.
+3. Fechar o Épico 6 quando os scores estiverem coerentes.
 
 ## Épico 1: Fundação do Projeto
 
