@@ -1,4 +1,4 @@
-from app.streamlit_app import filter_dashboard_jobs
+from app.streamlit_app import build_dashboard_summary_row, filter_dashboard_jobs
 from core.analysis_models import JobAnalysis
 from core.models import Job
 
@@ -40,6 +40,23 @@ def test_filter_dashboard_jobs_applies_score_and_classification() -> None:
     )
 
     assert [job.id for job in filtered_jobs] == [1]
+
+
+def test_build_dashboard_summary_row_keeps_table_compact() -> None:
+    analysis = JobAnalysis(id=1, job_id=1, score=90, classification="Aplicar")
+
+    row = build_dashboard_summary_row(_job(1), analysis, selected=True)
+
+    assert row == {
+        "Selecionar": True,
+        "Score": 90,
+        "Classificacao": "Aplicar",
+        "Cargo": "Job 1",
+        "Empresa": "",
+        "Localizacao": "",
+        "Status": "Nova",
+        "ID": 1,
+    }
 
 
 def _job(job_id: int) -> Job:

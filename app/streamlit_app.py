@@ -114,29 +114,118 @@ def render_dashboard() -> None:
         return
 
     st.metric("Vagas salvas", jobs_repository.count_all())
-    st.dataframe(
-        [
-            {
-                "Score": analyses_by_job_id[job.id].score if job.id in analyses_by_job_id else "",
-                "Classificacao": (
-                    analyses_by_job_id[job.id].classification
-                    if job.id in analyses_by_job_id
-                    else ""
-                ),
-                "Cargo": job.title,
-                "Empresa": job.company or "",
-                "Localizacao": job.location or "",
-                "Modalidade": job.work_mode or "",
-                "Senioridade": job.seniority or "",
-                "Provedor": job.provider or "",
-                "Status": format_job_status(job.status),
-                "Link": job.job_url or "",
-            }
-            for job in jobs
-        ],
+    selected_job_id = render_jobs_summary_table(jobs, analyses_by_job_id)
+    selected_job = next((job for job in jobs if job.id == selected_job_id), jobs[0])
+    render_job_details(selected_job, analyses_by_job_id.get(selected_job.id))
+
+
+def render_jobs_summary_table(
+    jobs: list[Job],
+    analyses_by_job_id: dict[int, JobAnalysis],
+) -> int | None:
+    selected_job_id = st.session_state.get("dashboard_selected_job_id")
+    if selected_job_id not in {job.id for job in jobs}:
+        selected_job_id = jobs[0].id
+
+    rows = [
+        build_dashboard_summary_row(
+            job,
+            analyses_by_job_id.get(job.id),
+            selected=job.id == selected_job_id,
+        )
+        for job in jobs
+    ]
+    edited_rows = st.data_editor(
+        rows,
+        column_config={
+            "Selecionar": st.column_config.CheckboxColumn("Selecionar"),
+            "Score": st.column_config.NumberColumn("Score", min_value=0, max_value=100),
+            "Classificacao": st.column_config.TextColumn("Classificação"),
+            "Cargo": st.column_config.TextColumn("Cargo"),
+            "Empresa": st.column_config.TextColumn("Empresa"),
+            "Localizacao": st.column_config.TextColumn("Localização"),
+            "Status": st.column_config.TextColumn("Status"),
+            "ID": None,
+        },
+        disabled=["Score", "Classificacao", "Cargo", "Empresa", "Localizacao", "Status"],
         hide_index=True,
         use_container_width=True,
+        key="dashboard_jobs_table",
     )
+
+    selected_rows = [row for row in edited_rows if row.get("Selecionar")]
+    selected_id = int(selected_rows[0]["ID"]) if selected_rows else selected_job_id
+    st.session_state["dashboard_selected_job_id"] = selected_id
+    return selected_id
+
+
+def build_dashboard_summary_row(
+    job: Job,
+    analysis: JobAnalysis | None,
+    *,
+    selected: bool,
+) -> dict[str, object]:
+    return {
+        "Selecionar": selected,
+        "Score": analysis.score if analysis else None,
+        "Classificacao": analysis.classification if analysis else "",
+        "Cargo": job.title,
+        "Empresa": job.company or "",
+        "Localizacao": job.location or "",
+        "Status": format_job_status(job.status),
+        "ID": job.id,
+    }
+
+
+def render_job_details(job: Job, analysis: JobAnalysis | None) -> None:
+    st.subheader("Detalhes da vaga")
+
+    st.write(f"**{job.title}**")
+    st.caption(" | ".join(item for item in [job.company, job.location, job.provider] if item))
+
+    detail_metrics = st.columns(3)
+    detail_metrics[0].metric("Score", analysis.score if analysis else "Sem score")
+    detail_metrics[1].metric("Classificação", analysis.classification if analysis else "-")
+    detail_metrics[2].metric("Status", format_job_status(job.status))
+
+    if job.job_url:
+        st.link_button("Abrir vaga", job.job_url)
+
+    if analysis:
+        if analysis.recommendation_reason:
+            st.write(f"**Motivo:** {analysis.recommendation_reason}")
+
+        strengths_column, gaps_column = st.columns(2)
+        with strengths_column:
+            st.write("**Pontos fortes**")
+            render_text_list(analysis.strengths, "Nenhum ponto forte calculado.")
+        with gaps_column:
+            st.write("**Gaps**")
+            render_text_list(analysis.gaps, "Nenhum gap calculado.")
+
+        terms_column, missing_column = st.columns(2)
+        with terms_column:
+            st.write("**Termos encontrados**")
+            render_text_list(analysis.matched_terms, "Nenhum termo encontrado.")
+        with missing_column:
+            st.write("**Termos ausentes**")
+            render_text_list(analysis.missing_terms, "Nenhum termo ausente.")
+    else:
+        st.info("Esta vaga ainda nao possui score calculado.")
+
+    if job.description:
+        with st.expander("Descrição"):
+            st.write(job.description)
+
+
+def render_text_list(items: list[str], empty_message: str) -> None:
+    cleaned_items = [item.strip() for item in items if item.strip()]
+    if not cleaned_items:
+        st.caption(empty_message)
+        return
+
+    for item in cleaned_items:
+        st.markdown(f"- {item}")
 
 
 def render_settings() -> None:
