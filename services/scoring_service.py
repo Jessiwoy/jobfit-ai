@@ -18,6 +18,7 @@ class ScoringSummary:
     reviewed_jobs: int
     analyzed_jobs: int
     skipped_jobs: int = 0
+    cleared_analyses: int = 0
 
 
 @dataclass(frozen=True)
@@ -62,10 +63,12 @@ class ScoringService:
         jobs = [job for job in self._jobs_repository.list_all() if job.id and job.status == "new"]
 
         if not _has_scoring_criteria(preferences, profile_items):
+            cleared_analyses = self._analyses_repository.delete_all()
             return ScoringSummary(
                 reviewed_jobs=len(jobs),
                 analyzed_jobs=0,
                 skipped_jobs=len(jobs),
+                cleared_analyses=cleared_analyses,
             )
 
         for job in jobs:

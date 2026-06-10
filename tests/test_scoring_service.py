@@ -141,6 +141,50 @@ def test_scoring_service_skips_when_no_criteria_are_configured(tmp_path: Path) -
     assert AnalysesRepository(database_path).count_all() == 0
 
 
+def test_scoring_service_clears_existing_analyses_when_no_criteria_are_configured(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "jobfit.db"
+    initialize_database(database_path)
+    sources_repository = JobSourcesRepository(database_path)
+    sources_repository.ensure_default_sources()
+    source = sources_repository.list_all()[0]
+    jobs_repository = JobsRepository(database_path)
+    jobs_repository.insert_many_ignore_existing(
+        [
+            Job(
+                id=None,
+                source_id=source.id,
+                email_message_id=None,
+                title="Frontend Developer",
+                description="React role.",
+                content_hash="hash-1",
+            )
+        ]
+    )
+    job = jobs_repository.list_all()[0]
+    analyses_repository = AnalysesRepository(database_path)
+    analyses_repository.upsert(
+        build_job_analysis(
+            job,
+            Preferences(
+                id=None,
+                user_id=1,
+                desired_titles=["Frontend Developer"],
+            ),
+            [],
+        )
+    )
+
+    summary = ScoringService(database_path).score_new_jobs()
+
+    assert summary.reviewed_jobs == 1
+    assert summary.analyzed_jobs == 0
+    assert summary.skipped_jobs == 1
+    assert summary.cleared_analyses == 1
+    assert analyses_repository.count_all() == 0
+
+
 def test_scoring_service_reports_empty_criteria_summary(tmp_path: Path) -> None:
     database_path = tmp_path / "jobfit.db"
     initialize_database(database_path)
