@@ -4,6 +4,7 @@ import streamlit as st
 from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH
 from core.database import get_database_path, initialize_database
 from core.models import JobSource, ProfileItem
+from repositories.analyses_repository import AnalysesRepository
 from repositories.email_messages_repository import EmailMessagesRepository
 from repositories.job_sources_repository import JobSourcesRepository
 from repositories.jobs_repository import JobsRepository
@@ -18,6 +19,7 @@ from services.gmail_service import (
 from services.gmail_sync_service import GmailSyncService
 from services.job_cleanup_service import JobCleanupService
 from services.job_processing_service import JobProcessingService
+from services.scoring_service import ScoringService
 
 JOB_STATUS_LABELS = {
     "new": "Nova",
@@ -75,6 +77,10 @@ def render_dashboard() -> None:
         for job in jobs_repository.list_recent(limit=100)
         if job.status in selected_statuses
     ]
+    analyses_repository = AnalysesRepository(get_database_path())
+    analyses_by_job_id = analyses_repository.list_by_job_ids(
+        [job.id for job in jobs if job.id is not None]
+    )
 
     if not jobs:
         st.info("Nenhuma vaga encontrada para os filtros atuais.")
@@ -84,6 +90,12 @@ def render_dashboard() -> None:
     st.dataframe(
         [
             {
+                "Score": analyses_by_job_id[job.id].score if job.id in analyses_by_job_id else "",
+                "Classificacao": (
+                    analyses_by_job_id[job.id].classification
+                    if job.id in analyses_by_job_id
+                    else ""
+                ),
                 "Cargo": job.title,
                 "Empresa": job.company or "",
                 "Localizacao": job.location or "",
@@ -300,6 +312,7 @@ def render_sync() -> None:
     sources_repository = JobSourcesRepository(db_path)
     messages_repository = EmailMessagesRepository(db_path)
     jobs_repository = JobsRepository(db_path)
+    analyses_repository = AnalysesRepository(db_path)
     sources_repository.ensure_default_sources()
     active_sources = [source for source in sources_repository.list_all() if source.enabled]
 
@@ -344,11 +357,12 @@ def render_sync() -> None:
     if st.button("Buscar novos e-mails"):
         sync_gmail_messages(int(max_results))
 
-    email_metric, pending_metric, error_metric, jobs_metric = st.columns(4)
+    email_metric, pending_metric, error_metric, jobs_metric, analyses_metric = st.columns(5)
     email_metric.metric("E-mails salvos", messages_repository.count_all())
     pending_metric.metric("E-mails novos", messages_repository.count_by_status("new"))
     error_metric.metric("E-mails com erro", messages_repository.count_by_status("error"))
     jobs_metric.metric("Vagas criadas", jobs_repository.count_all())
+    analyses_metric.metric("Scores calculados", analyses_repository.count_all())
 
     job_status_metrics = st.columns(4)
     job_status_metrics[0].metric("Vagas novas", count_jobs_by_status(jobs_repository, "new"))
@@ -385,6 +399,10 @@ def render_sync() -> None:
 
     if st.button("Limpar e deduplicar vagas"):
         cleanup_jobs(int(max_age_days))
+
+    st.subheader("Score")
+    if st.button("Recalcular scores"):
+        score_jobs()
 
     st.subheader("Ultimos e-mails")
     recent_messages = messages_repository.list_recent(limit=10)
@@ -516,6 +534,20 @@ def cleanup_jobs(max_age_days: int) -> None:
         f"{summary.old_jobs} antiga(s), "
         f"{summary.incompatible_jobs} incompatível(is)."
     )
+
+
+def score_jobs() -> None:
+    summary = ScoringService(get_database_path()).score_new_jobs()
+
+    if summary.reviewed_jobs == 0:
+        st.info("Nao ha vagas novas para calcular score.")
+        return
+
+    if summary.analyzed_jobs == 0:
+        st.warning("Configure perfil, preferencias ou dados reais antes de calcular scores.")
+        return
+
+    st.success(f"Score recalculado para {summary.analyzed_jobs} vaga(s).")
 
 
 def format_job_status(status: str) -> str:
