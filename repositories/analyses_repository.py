@@ -58,6 +58,12 @@ class AnalysesRepository:
 
         return int(row["count"])
 
+    def delete_all(self) -> int:
+        with connect(self._database_path) as connection:
+            before = connection.total_changes
+            connection.execute("DELETE FROM job_analyses")
+            return connection.total_changes - before
+
     def get_by_job_id(self, job_id: int) -> JobAnalysis | None:
         with connect(self._database_path) as connection:
             row = connection.execute(

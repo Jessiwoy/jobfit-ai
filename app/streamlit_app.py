@@ -662,6 +662,13 @@ def score_jobs() -> None:
         return
 
     if summary.analyzed_jobs == 0:
+        if summary.cleared_analyses:
+            st.warning(
+                "Configure perfil, preferencias ou dados reais antes de calcular scores. "
+                f"{summary.cleared_analyses} score(s) antigo(s) foram limpos."
+            )
+            return
+
         st.warning("Configure perfil, preferencias ou dados reais antes de calcular scores.")
         return
 
