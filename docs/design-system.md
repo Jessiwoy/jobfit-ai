@@ -33,7 +33,12 @@ Menu principal esperado:
 
 ## Dashboard
 
-O dashboard deve priorizar a tabela de vagas.
+O dashboard deve priorizar triagem rápida em padrão master-detail:
+
+- Tabela compacta para comparar vagas.
+- Painel de detalhes abaixo da tabela para a vaga selecionada.
+- Evitar colocar descrição, pontos fortes, gaps e motivo da recomendação como colunas da tabela principal.
+- Evitar modal neste momento; manter a revisão na mesma tela para reduzir atrito.
 
 Filtros devem ficar próximos da tabela:
 
@@ -44,15 +49,24 @@ Filtros devem ficar próximos da tabela:
 - Empresa.
 - Classificação.
 
-Colunas principais:
+Colunas principais da tabela compacta:
 
-- Empresa.
-- Cargo.
-- Data.
 - Score.
 - Classificação.
-- Fonte.
-- Link.
+- Cargo.
+- Empresa.
+- Localização.
+- Status.
+
+O painel de detalhes deve exibir:
+
+- Link original.
+- Fonte ou provedor.
+- Descrição.
+- Motivo da recomendação.
+- Pontos fortes.
+- Gaps.
+- Termos encontrados e ausentes, quando existirem.
 
 ## Classificações
 
@@ -125,4 +139,3 @@ Textos devem reforçar que:
 - O sistema faz triagem.
 - A decisão de aplicar é manual.
 - Materiais são rascunhos de apoio.
-

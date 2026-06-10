@@ -18,7 +18,7 @@ Status por épico:
 - Épico 4: entregue.
 - Épico 5: entregue.
 - Épico 6: em andamento.
-- Épico 7: pendente, exceto visualização básica criada para apoiar validação dos épicos anteriores.
+- Épico 7: pendente, exceto visualização básica e recorte de dashboard master-detail antecipado para apoiar validação do Épico 6.
 - Épico 8: pendente.
 - Épico 9: pendente.
 
@@ -45,9 +45,9 @@ Entregas já existentes:
 
 Próximas entregas, em ordem:
 
-1. Configurar preferências e dados reais para validar scores com vagas locais.
-2. Ajustar pesos e explicações do score conforme o resultado real.
-3. Fechar Épico 6 depois que score, pontos fortes, gaps e motivo estiverem coerentes.
+1. Antecipar recorte do Épico 7: transformar o Dashboard em tabela compacta com painel de detalhes da vaga selecionada.
+2. Configurar preferências e dados reais para validar scores com vagas locais.
+3. Ajustar pesos do score conforme o resultado real e fechar o Épico 6 quando os scores estiverem coerentes.
 
 ## Épico 1: Fundação do Projeto
 
