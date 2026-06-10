@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import streamlit as st
+from core.analysis_models import JobAnalysis
 from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH
 from core.database import get_database_path, initialize_database
-from core.models import JobSource, ProfileItem
+from core.models import Job, JobSource, ProfileItem
 from repositories.analyses_repository import AnalysesRepository
 from repositories.email_messages_repository import EmailMessagesRepository
 from repositories.job_sources_repository import JobSourcesRepository
@@ -33,6 +34,8 @@ EMAIL_STATUS_LABELS = {
     "processed": "Processado",
     "error": "Erro",
 }
+
+CLASSIFICATION_FILTER_LABELS = ["Sem score", "Aplicar", "Avaliar", "Ignorar"]
 
 
 def main() -> None:
@@ -72,6 +75,28 @@ def render_dashboard() -> None:
         for status, label in JOB_STATUS_LABELS.items()
         if label in selected_status_labels
     ]
+
+    st.write("Score")
+    minimum_score = st.slider(
+        "Score mínimo",
+        min_value=0,
+        max_value=100,
+        value=0,
+        step=5,
+    )
+
+    st.write("Classificação")
+    classification_columns = st.columns(len(CLASSIFICATION_FILTER_LABELS))
+    selected_classifications = [
+        label
+        for column, label in zip(
+            classification_columns,
+            CLASSIFICATION_FILTER_LABELS,
+            strict=True,
+        )
+        if column.checkbox(label, value=True)
+    ]
+
     jobs = [
         job
         for job in jobs_repository.list_recent(limit=100)
@@ -80,6 +105,12 @@ def render_dashboard() -> None:
     analyses_repository = AnalysesRepository(get_database_path())
     analyses_by_job_id = analyses_repository.list_by_job_ids(
         [job.id for job in jobs if job.id is not None]
+    )
+    jobs = filter_dashboard_jobs(
+        jobs,
+        analyses_by_job_id,
+        minimum_score=minimum_score,
+        selected_classifications=selected_classifications,
     )
 
     if not jobs:
@@ -564,6 +595,37 @@ def count_jobs_by_status(repository: JobsRepository, status: str) -> int:
         return int(count_by_status(status))
 
     return sum(1 for job in repository.list_recent(limit=10000) if job.status == status)
+
+
+def filter_dashboard_jobs(
+    jobs: list[Job],
+    analyses_by_job_id: dict[int, JobAnalysis],
+    *,
+    minimum_score: int,
+    selected_classifications: list[str],
+) -> list[Job]:
+    filtered_jobs = []
+    include_without_score = "Sem score" in selected_classifications
+
+    for job in jobs:
+        if job.id is None:
+            continue
+
+        analysis = analyses_by_job_id.get(job.id)
+        if analysis is None:
+            if include_without_score and minimum_score == 0:
+                filtered_jobs.append(job)
+            continue
+
+        if analysis.score < minimum_score:
+            continue
+
+        if analysis.classification not in selected_classifications:
+            continue
+
+        filtered_jobs.append(job)
+
+    return filtered_jobs
 
 
 def parse_lines(value: str) -> list[str]:

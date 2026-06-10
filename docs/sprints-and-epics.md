@@ -41,6 +41,7 @@ Entregas já existentes:
 - Validação da limpeza com banco local: 42 vagas revisadas, 13 duplicadas marcadas e 29 mantidas como novas.
 - Score determinístico inicial salvo em `job_analyses`, com classificação `Aplicar`, `Avaliar` ou `Ignorar`.
 - Proteção para não calcular scores quando perfil, preferências e dados reais ainda não estiverem configurados.
+- Dashboard com filtros de score mínimo e classificação.
 
 Próximas entregas, em ordem:
 
