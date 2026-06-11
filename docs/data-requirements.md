@@ -166,6 +166,33 @@ Antes de gerar currículo adaptado ou carta, precisamos de:
 
 Esses dados serão a única fonte permitida para geração de materiais.
 
+## Importação de Currículo PDF
+
+O app deve permitir carregar um currículo em PDF pela tela de configurações.
+
+Ao importar o PDF, o sistema deve:
+
+- Extrair o texto do PDF localmente.
+- Atualizar `references/profile-extracted.md` com o texto extraído.
+- Não resumir, reescrever ou trocar palavras do currículo extraído.
+- Usar a extração apenas como base para sugerir preenchimento de perfil, preferências e dados reais.
+- Manter o PDF e o markdown extraído fora do Git, pois contêm dados sensíveis.
+
+O preenchimento automático deve sugerir:
+
+- Nome.
+- E-mail.
+- Cargo atual ou alvo.
+- Localização.
+- Resumo profissional.
+- Cargos alvo.
+- Senioridades aceitas.
+- Tecnologias e skills.
+- Termos prioritários para score.
+- Dados reais do currículo com evidências.
+
+Quando houver conflito entre dados já configurados e dados importados, o app deve preservar os dados existentes ou pedir uma ação explícita do usuário antes de substituir dados reais.
+
 ## Dados Opcionais
 
 Podemos configurar também:

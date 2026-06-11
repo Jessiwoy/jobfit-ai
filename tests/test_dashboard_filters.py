@@ -28,7 +28,7 @@ def test_filter_dashboard_jobs_applies_score_and_classification() -> None:
     jobs = [_job(1), _job(2), _job(3)]
     analyses = {
         1: JobAnalysis(id=1, job_id=1, score=90, classification="Aplicar"),
-        2: JobAnalysis(id=2, job_id=2, score=70, classification="Avaliar"),
+        2: JobAnalysis(id=2, job_id=2, score=70, classification="Aplicar"),
         3: JobAnalysis(id=3, job_id=3, score=40, classification="Ignorar"),
     }
 
@@ -39,16 +39,15 @@ def test_filter_dashboard_jobs_applies_score_and_classification() -> None:
         selected_classifications=["Aplicar"],
     )
 
-    assert [job.id for job in filtered_jobs] == [1]
+    assert [job.id for job in filtered_jobs] == [1, 2]
 
 
 def test_build_dashboard_summary_row_keeps_table_compact() -> None:
     analysis = JobAnalysis(id=1, job_id=1, score=90, classification="Aplicar")
 
-    row = build_dashboard_summary_row(_job(1), analysis, selected=True)
+    row = build_dashboard_summary_row(_job(1), analysis)
 
     assert row == {
-        "Selecionar": True,
         "Score": 90,
         "Classificacao": "Aplicar",
         "Cargo": "Job 1",

@@ -28,7 +28,7 @@ def test_analyses_repository_counts_by_classification_and_score_range(
         JobAnalysis(id=None, job_id=jobs[0].id, score=30, classification="Ignorar")
     )
     analyses_repository.upsert(
-        JobAnalysis(id=None, job_id=jobs[1].id, score=70, classification="Avaliar")
+        JobAnalysis(id=None, job_id=jobs[1].id, score=60, classification="Avaliar")
     )
     analyses_repository.upsert(
         JobAnalysis(id=None, job_id=jobs[2].id, score=90, classification="Aplicar")
@@ -41,8 +41,8 @@ def test_analyses_repository_counts_by_classification_and_score_range(
     }
     assert analyses_repository.count_by_score_range() == {
         "0-49": 1,
-        "50-79": 1,
-        "80-100": 1,
+        "50-69": 1,
+        "70-100": 1,
     }
 
 

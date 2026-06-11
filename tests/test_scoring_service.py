@@ -173,6 +173,28 @@ def test_build_job_analysis_rewards_resume_evidence_context() -> None:
     assert "react" in analysis.matched_terms
 
 
+def test_build_job_analysis_classifies_score_70_as_apply() -> None:
+    job = _job(
+        job_id=1,
+        title="React Developer",
+        work_mode="remote",
+        description="React TypeScript role.",
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=["React Developer"],
+        technologies=["React", "TypeScript"],
+        work_modes=["remote"],
+        required_terms=["React"],
+    )
+
+    analysis = build_job_analysis(job, preferences, [])
+
+    assert analysis.score == 70
+    assert analysis.classification == "Aplicar"
+
+
 def test_scoring_service_saves_analysis_for_new_jobs(tmp_path: Path) -> None:
     database_path = tmp_path / "jobfit.db"
     initialize_database(database_path)

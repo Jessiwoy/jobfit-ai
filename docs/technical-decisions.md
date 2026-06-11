@@ -60,8 +60,9 @@ Atualização em 2026-06-11:
 - Tecnologias configuradas ajudam a identificar requisitos relevantes, mas evidências em `profile_items` têm maior valor.
 - Evidências em experiências, projetos e certificações devem valer mais que palavras soltas.
 - O score deve usar cobertura suficiente por categoria: bom match de cargo, requisitos técnicos cobertos pelo currículo, evidência contextual e termos prioritários podem gerar pontuação alta.
+- O currículo PDF pode ser usado para preencher `profile_items`, mas a extração deve preservar o texto original em `references/profile-extracted.md` sem resumo ou reescrita manual.
 - Campos ausentes ou pobres no e-mail devem reduzir confiança, mas não descartar automaticamente uma vaga.
-- Termos indesejados continuam sendo penalização forte, pois representam preferência explícita de descarte.
+- Termos indesejados continuam penalizando a vaga, mas não devem anular sozinhos uma aderência técnica forte.
 - Variações comuns devem ser normalizadas antes do score, por exemplo `Frontend`, `Front-end`, `Fullstack`, `Full Stack`, `Remoto`, `remote`, `Brasil` e `Brazil`.
 
 ## Decisão 6: Materiais por Templates Primeiro

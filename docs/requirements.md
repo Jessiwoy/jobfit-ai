@@ -14,7 +14,7 @@ O sistema deve:
 - Gerar pontos fortes, pontos ausentes e motivo da recomendação.
 - Classificar cada vaga como `Aplicar`, `Avaliar` ou `Ignorar`.
 - Exibir as vagas em uma interface Streamlit.
-- Gerar materiais de apoio somente para vagas com score maior ou igual a 80.
+- Gerar materiais de apoio somente para vagas com score maior ou igual a 70.
 
 O sistema não deve:
 
@@ -114,7 +114,7 @@ Regras de score determinístico:
 
 ### 4. Materiais
 
-Gerar materiais apenas para vagas com score maior ou igual a 80.
+Gerar materiais apenas para vagas com score maior ou igual a 70.
 
 Materiais esperados:
 

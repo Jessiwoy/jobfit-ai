@@ -77,6 +77,28 @@ Esse exemplo é mais forte do que apenas:
 Nome: React
 ```
 
+## Importação do Currículo
+
+O currículo pode ser importado em PDF pela tela de configurações.
+
+O sistema extrai o texto localmente com `pypdf` e atualiza:
+
+```text
+references/profile-extracted.md
+```
+
+Esse arquivo deve preservar o texto extraído do PDF sem resumo ou reescrita manual. Ele fica fora do Git porque contém dados sensíveis.
+
+Depois da extração, o app sugere preenchimento para:
+
+- Perfil básico.
+- Cargos alvo.
+- Tecnologias e skills usadas para detectar requisitos de vaga.
+- Termos prioritários.
+- Dados reais do currículo em `profile_items`.
+
+As evidências usadas pelo score devem vir de trechos do próprio currículo extraído, não de texto inventado.
+
 ## Normalização
 
 Antes de comparar textos, o sistema normaliza variações comuns:
@@ -103,7 +125,7 @@ Termos obrigatórios/prioritários:       até 10 pontos
 Senioridade compatível:                 até 10 pontos
 Modalidade compatível:                  até 5 pontos
 Localização compatível:                 até 5 pontos
-Termos indesejados:                     -30 pontos
+Termos indesejados:                     -15 pontos
 ```
 
 ## Regra Por Camada
@@ -196,7 +218,7 @@ Compara localização com as localizações aceitas.
 
 ### 8. Termos Indesejados
 
-Penaliza 30 pontos.
+Penaliza 15 pontos.
 
 Exemplos:
 
@@ -213,8 +235,8 @@ Essa penalização é forte porque representa descarte explícito.
 ## Classificação
 
 ```text
-80 a 100 = Aplicar
-50 a 79  = Avaliar
+70 a 100 = Aplicar
+50 a 69  = Avaliar
 0 a 49   = Ignorar
 ```
 

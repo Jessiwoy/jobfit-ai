@@ -9,4 +9,6 @@ DATABASE_PATH = DATA_DIR / "jobfit.db"
 CREDENTIALS_DIR = ROOT_DIR / "credentials"
 GMAIL_CREDENTIALS_PATH = CREDENTIALS_DIR / "credentials.json"
 GMAIL_TOKEN_PATH = CREDENTIALS_DIR / "token.json"
+REFERENCES_DIR = ROOT_DIR / "references"
+PROFILE_EXTRACTED_PATH = REFERENCES_DIR / "profile-extracted.md"
 

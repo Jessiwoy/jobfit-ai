@@ -53,6 +53,8 @@ Entregas já existentes:
 - Ajuste do score determinístico para não exigir correspondência de todos os cargos e tecnologias configurados.
 - Reformulação do score em camadas, comparando requisitos visíveis da vaga com evidências reais do currículo.
 - Documentação da regra de negócio do score em `docs/scoring-model.md`.
+- Importação local de currículo PDF para preencher perfil, preferências e dados reais usados pelo score.
+- Atualização de `references/profile-extracted.md` a partir do texto extraído do PDF, sem versionar dados sensíveis.
 - Limpeza menos agressiva para localização, evitando descartar cidades brasileiras quando `Brasil` está aceito.
 - Marcação de e-mails digest genéricos como duplicados quando as vagas internas já foram extraídas.
 - Validação local após reprocessamento: 324 vagas salvas, 155 vagas novas, 156 duplicadas e 13 incompatíveis.
@@ -170,6 +172,7 @@ Escopo esperado:
 - Normalizar variações comuns de termos em português e inglês.
 - Comparar requisitos técnicos visíveis na vaga com dados reais do currículo.
 - Valorizar evidências contextuais em experiências, projetos, certificações e habilidades reais.
+- Permitir importar currículo PDF para reduzir preenchimento manual dos dados usados no score.
 - Calibrar pesos com vagas reais antes de iniciar geração de materiais.
 - Evitar que listas longas de tecnologias reduzam artificialmente vagas boas.
 
@@ -201,7 +204,7 @@ Objetivo: gerar materiais de apoio apenas para vagas fortes.
 
 Escopo esperado:
 
-- Gerar somente para score maior ou igual a 80.
+- Gerar somente para score maior ou igual a 70.
 - Currículo adaptado por templates locais.
 - Carta de apresentação por templates locais.
 - Resumo estratégico.

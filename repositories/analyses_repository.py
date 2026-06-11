@@ -9,8 +9,8 @@ from repositories.json_fields import decode_string_list, encode_json
 
 SCORE_RANGES = {
     "0-49": (0, 49),
-    "50-79": (50, 79),
-    "80-100": (80, 100),
+    "50-69": (50, 69),
+    "70-100": (70, 100),
 }
 
 

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import streamlit as st
 from core.analysis_models import JobAnalysis
-from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH
+from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH, ROOT_DIR
 from core.database import get_database_path, initialize_database
 from core.models import Job, JobSource, ProfileItem
 from repositories.analyses_repository import AnalysesRepository
@@ -22,6 +22,11 @@ from services.gmail_service import (
 from services.gmail_sync_service import GmailSyncService
 from services.job_cleanup_service import JobCleanupService
 from services.job_processing_service import JobProcessingService
+from services.resume_pdf_service import (
+    build_resume_autofill,
+    extract_resume_pdf,
+    write_profile_extracted,
+)
 from services.scoring_service import ScoringService
 
 JOB_STATUS_LABELS = {
@@ -38,6 +43,7 @@ EMAIL_STATUS_LABELS = {
 }
 
 CLASSIFICATION_FILTER_LABELS = ["Sem score", "Aplicar", "Avaliar", "Ignorar"]
+PROFILE_EXTRACTED_PATH = ROOT_DIR / "references" / "profile-extracted.md"
 
 
 def main() -> None:
@@ -133,14 +139,12 @@ def render_jobs_summary_table(
         build_dashboard_summary_row(
             job,
             analyses_by_job_id.get(job.id),
-            selected=job.id == selected_job_id,
         )
         for job in jobs
     ]
-    edited_rows = st.data_editor(
+    event = st.dataframe(
         rows,
         column_config={
-            "Selecionar": st.column_config.CheckboxColumn("Selecionar"),
             "Score": st.column_config.NumberColumn("Score", min_value=0, max_value=100),
             "Classificacao": st.column_config.TextColumn("Classificação"),
             "Cargo": st.column_config.TextColumn("Cargo"),
@@ -149,14 +153,15 @@ def render_jobs_summary_table(
             "Status": st.column_config.TextColumn("Status"),
             "ID": None,
         },
-        disabled=["Score", "Classificacao", "Cargo", "Empresa", "Localizacao", "Status"],
         hide_index=True,
         use_container_width=True,
         key="dashboard_jobs_table",
+        on_select="rerun",
+        selection_mode="single-row",
     )
 
-    selected_rows = [row for row in edited_rows if row.get("Selecionar")]
-    selected_id = int(selected_rows[0]["ID"]) if selected_rows else selected_job_id
+    selected_indexes = event.selection.rows
+    selected_id = int(rows[selected_indexes[0]]["ID"]) if selected_indexes else selected_job_id
     st.session_state["dashboard_selected_job_id"] = selected_id
     return selected_id
 
@@ -164,11 +169,8 @@ def render_jobs_summary_table(
 def build_dashboard_summary_row(
     job: Job,
     analysis: JobAnalysis | None,
-    *,
-    selected: bool,
 ) -> dict[str, object]:
     return {
-        "Selecionar": selected,
         "Score": analysis.score if analysis else None,
         "Classificacao": analysis.classification if analysis else "",
         "Cargo": job.title,
@@ -246,8 +248,13 @@ def render_settings() -> None:
     sources_repository.ensure_default_sources()
     sources = sources_repository.list_all()
 
-    profile_tab, resume_data_tab, sources_tab = st.tabs(
-        ["Perfil e preferencias", "Dados reais do curriculo", "Label de coleta"]
+    profile_tab, resume_data_tab, resume_pdf_tab, sources_tab = st.tabs(
+        [
+            "Perfil e preferencias",
+            "Dados reais do curriculo",
+            "Curriculo PDF",
+            "Label de coleta",
+        ]
     )
 
     with profile_tab:
@@ -264,6 +271,17 @@ def render_settings() -> None:
             profile_items_repository,
             analyses_repository,
             user.id,
+            profile_items,
+        )
+
+    with resume_pdf_tab:
+        render_resume_pdf_importer(
+            user_repository,
+            preferences_repository,
+            profile_items_repository,
+            analyses_repository,
+            user.id,
+            preferences,
             profile_items,
         )
 
@@ -285,41 +303,44 @@ def render_profile_form(
         location = st.text_input("Localizacao", value=user.location or "")
         summary = st.text_area("Resumo profissional", value=user.summary or "", height=120)
 
-        st.subheader("Preferencias")
+        st.subheader("Preferencias usadas no score")
         desired_titles = st.text_area(
-            "Cargos desejados",
+            "Cargos alvo",
             value="\n".join(preferences.desired_titles),
-            help="Informe um item por linha.",
+            help="Títulos alternativos que indicam função compatível. Informe um item por linha.",
         )
         seniority = st.text_area(
-            "Senioridade",
+            "Senioridades aceitas",
             value="\n".join(preferences.seniority),
-            help="Informe um item por linha.",
+            help="Níveis que você aceitaria, por exemplo Junior, Pleno ou Senior.",
         )
         technologies = st.text_area(
-            "Tecnologias",
+            "Tecnologias e skills para detectar requisitos",
             value="\n".join(preferences.technologies),
-            help="Informe um item por linha.",
+            help=(
+                "Usadas para identificar requisitos da vaga. "
+                "Evidências reais devem ficar na aba de currículo."
+            ),
         )
         work_modes = st.text_area(
-            "Modalidades",
+            "Modalidades aceitas",
             value="\n".join(preferences.work_modes),
-            help="Informe um item por linha.",
+            help="Exemplos: Remoto, Híbrido, Presencial.",
         )
         locations = st.text_area(
             "Localizacoes aceitas",
             value="\n".join(preferences.locations),
-            help="Informe um item por linha.",
+            help="Exemplos: Brasil, Santa Catarina, Remoto Brasil.",
         )
         required_terms = st.text_area(
-            "Termos obrigatorios",
+            "Termos prioritarios para score",
             value="\n".join(preferences.required_terms),
-            help="Informe um item por linha.",
+            help="Termos que aumentam a prioridade quando aparecem na vaga, como React.",
         )
         undesired_terms = st.text_area(
             "Termos indesejados",
             value="\n".join(preferences.undesired_terms),
-            help="Informe um item por linha.",
+            help="Termos que penalizam fortemente a vaga, como WordPress ou Suporte.",
         )
 
         submitted = st.form_submit_button("Salvar configuracoes")
@@ -354,7 +375,8 @@ def render_profile_items_editor(
     profile_items: list[ProfileItem],
 ) -> None:
     st.caption(
-        "Cadastre apenas informacoes reais. Esses dados serao a base para score e materiais."
+        "Cadastre apenas informacoes reais. "
+        "Evidencias em experiencias e projetos aumentam a confianca do score."
     )
 
     rows = [
@@ -399,6 +421,123 @@ def render_profile_items_editor(
         repository.replace_for_user(user_id, parse_profile_items(user_id, edited_rows))
         clear_scores_after_criteria_change(analyses_repository)
         st.success("Dados reais do curriculo salvos.")
+
+
+def render_resume_pdf_importer(
+    user_repository: UserRepository,
+    preferences_repository: PreferencesRepository,
+    profile_items_repository: ProfileItemsRepository,
+    analyses_repository: AnalysesRepository,
+    user_id: int,
+    preferences,
+    profile_items: list[ProfileItem],
+) -> None:  # type: ignore[no-untyped-def]
+    st.caption(
+        "Importe um curriculo em PDF para extrair texto literal e sugerir dados usados pelo score."
+    )
+    st.write(f"Texto extraido local: `{PROFILE_EXTRACTED_PATH}`")
+
+    uploaded_file = st.file_uploader("Curriculo PDF", type=["pdf"])
+    if uploaded_file is None:
+        if PROFILE_EXTRACTED_PATH.exists():
+            with st.expander("Ver profile-extracted.md atual"):
+                st.text(PROFILE_EXTRACTED_PATH.read_text(encoding="utf-8"))
+        return
+
+    extraction = extract_resume_pdf(uploaded_file.getvalue())
+    autofill = build_resume_autofill(user_id=user_id, readable_text=extraction.readable_text)
+
+    st.subheader("Dados detectados")
+    profile_columns = st.columns(4)
+    profile_columns[0].metric("Tecnologias", len(autofill.technologies))
+    profile_columns[1].metric("Dados reais", len(autofill.profile_items))
+    profile_columns[2].metric("Cargos alvo", len(autofill.desired_titles))
+    profile_columns[3].metric("Termos prioritarios", len(autofill.required_terms))
+
+    preview_tab, items_tab, text_tab = st.tabs(
+        ["Campos para score", "Dados reais detectados", "Texto extraido"]
+    )
+
+    with preview_tab:
+        st.write("**Perfil**")
+        st.dataframe(
+            [
+                {"Campo": "Nome", "Valor": autofill.name or ""},
+                {"Campo": "E-mail", "Valor": autofill.email or ""},
+                {"Campo": "Cargo atual ou alvo", "Valor": autofill.current_title or ""},
+                {"Campo": "Localizacao", "Valor": autofill.location or ""},
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.write("**Preferencias sugeridas**")
+        st.dataframe(
+            [
+                {"Campo": "Cargos desejados", "Valores": "\n".join(autofill.desired_titles)},
+                {"Campo": "Senioridade", "Valores": "\n".join(autofill.seniority)},
+                {"Campo": "Tecnologias", "Valores": "\n".join(autofill.technologies)},
+                {"Campo": "Localizacoes", "Valores": "\n".join(autofill.locations)},
+                {"Campo": "Termos prioritarios", "Valores": "\n".join(autofill.required_terms)},
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    with items_tab:
+        st.dataframe(
+            [
+                {
+                    "Tipo": item.item_type,
+                    "Nome": item.name,
+                    "Nivel": item.level or "",
+                    "Anos": item.years_experience,
+                    "Evidencia": item.evidence or "",
+                }
+                for item in autofill.profile_items
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    with text_tab:
+        st.text_area("Texto extraido do PDF", extraction.readable_text, height=420)
+
+    replace_profile_items = st.checkbox(
+        "Substituir dados reais do curriculo pelos dados extraidos",
+        value=True,
+    )
+
+    if st.button("Aplicar dados extraidos do PDF"):
+        write_profile_extracted(PROFILE_EXTRACTED_PATH, extraction)
+        user_repository.update_profile(
+            user_id=user_id,
+            name=autofill.name or "",
+            email=autofill.email or "",
+            current_title=autofill.current_title or "",
+            location=autofill.location or "",
+            summary=autofill.summary or "",
+        )
+        preferences_repository.upsert(
+            user_id=user_id,
+            desired_titles=merge_unique_lines(preferences.desired_titles, autofill.desired_titles),
+            seniority=merge_unique_lines(preferences.seniority, autofill.seniority),
+            technologies=merge_unique_lines(preferences.technologies, autofill.technologies),
+            work_modes=merge_unique_lines(preferences.work_modes, autofill.work_modes),
+            locations=merge_unique_lines(preferences.locations, autofill.locations),
+            required_terms=merge_unique_lines(preferences.required_terms, autofill.required_terms),
+            undesired_terms=preferences.undesired_terms,
+        )
+
+        if replace_profile_items:
+            profile_items_repository.replace_for_user(user_id, autofill.profile_items)
+        else:
+            profile_items_repository.replace_for_user(
+                user_id,
+                merge_profile_items(profile_items, autofill.profile_items),
+            )
+
+        clear_scores_after_criteria_change(analyses_repository)
+        st.success("Curriculo importado. Recalcule os scores na tela de sincronizacao.")
 
 
 def render_job_sources_table(
@@ -782,8 +921,8 @@ def render_score_analysis_summary(analyses_repository: AnalysesRepository) -> No
 
     range_columns = st.columns(3)
     range_columns[0].metric("Score 0-49", score_range_counts.get("0-49", 0))
-    range_columns[1].metric("Score 50-79", score_range_counts.get("50-79", 0))
-    range_columns[2].metric("Score 80-100", score_range_counts.get("80-100", 0))
+    range_columns[1].metric("Score 50-69", score_range_counts.get("50-69", 0))
+    range_columns[2].metric("Score 70-100", score_range_counts.get("70-100", 0))
 
 
 def format_job_status(status: str) -> str:
@@ -835,6 +974,50 @@ def filter_dashboard_jobs(
 
 def parse_lines(value: str) -> list[str]:
     return [line.strip() for line in value.splitlines() if line.strip()]
+
+
+def merge_unique_lines(existing: list[str], imported: list[str]) -> list[str]:
+    merged = []
+    seen = set()
+
+    for item in existing + imported:
+        cleaned = item.strip()
+        normalized = cleaned.lower()
+        if not cleaned or normalized in seen:
+            continue
+
+        seen.add(normalized)
+        merged.append(cleaned)
+
+    return merged
+
+
+def merge_profile_items(
+    existing_items: list[ProfileItem],
+    imported_items: list[ProfileItem],
+) -> list[ProfileItem]:
+    merged = []
+    seen = set()
+
+    for item in existing_items + imported_items:
+        key = (item.item_type, item.name.strip().lower())
+        if not item.name.strip() or key in seen:
+            continue
+
+        seen.add(key)
+        merged.append(
+            ProfileItem(
+                id=None,
+                user_id=item.user_id,
+                item_type=item.item_type,
+                name=item.name,
+                level=item.level,
+                years_experience=item.years_experience,
+                evidence=item.evidence,
+            )
+        )
+
+    return merged
 
 
 def parse_profile_items(user_id: int, rows: list[dict]) -> list[ProfileItem]:

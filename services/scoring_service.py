@@ -191,7 +191,7 @@ def build_job_analysis(
         gaps.append("Localização não confirmada como compatível.")
 
     if undesired_matches:
-        score -= 30
+        score -= 15
         gaps.append("Termos indesejados encontrados.")
 
     normalized_score = max(0, min(100, round(score)))
@@ -449,7 +449,7 @@ def _missing_terms(preferences: Preferences, matched_terms: list[str]) -> list[s
 
 
 def _classification(score: int) -> str:
-    if score >= 80:
+    if score >= 70:
         return "Aplicar"
     if score >= 50:
         return "Avaliar"
@@ -457,7 +457,7 @@ def _classification(score: int) -> str:
 
 
 def _recommendation_reason(score: int, strengths: list[str], gaps: list[str]) -> str:
-    if score >= 80:
+    if score >= 70:
         return "Alta aderência aos critérios configurados."
     if score >= 50:
         return "Aderência parcial; revisar gaps antes de decidir."
