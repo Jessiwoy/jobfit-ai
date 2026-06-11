@@ -34,7 +34,7 @@ def test_build_job_analysis_classifies_strong_match_as_apply() -> None:
 
     analysis = build_job_analysis(job, preferences, [])
 
-    assert analysis.score == 100
+    assert analysis.score >= 80
     assert analysis.classification == "Aplicar"
     assert "react" in analysis.matched_terms
     assert analysis.undesired_terms_found == []
@@ -58,6 +58,119 @@ def test_build_job_analysis_penalizes_undesired_terms() -> None:
 
     assert analysis.classification == "Ignorar"
     assert analysis.undesired_terms_found == ["wordpress", "php"]
+
+
+def test_build_job_analysis_matches_common_portuguese_variants() -> None:
+    job = _job(
+        job_id=1,
+        title="Desenvolvedor React Junior - Trabalho Remoto",
+        location="Brasil",
+        work_mode="remote",
+        seniority="junior",
+        description="Vaga front-end com React.",
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=["Desenvolvedora React"],
+        seniority=["Júnior"],
+        technologies=["Frontend", "React"],
+        work_modes=["Remoto"],
+        locations=["Brasil"],
+        required_terms=["React"],
+    )
+
+    analysis = build_job_analysis(job, preferences, [])
+
+    assert analysis.score >= 80
+    assert analysis.classification == "Aplicar"
+
+
+def test_build_job_analysis_does_not_require_every_configured_technology() -> None:
+    job = _job(
+        job_id=1,
+        title="Desenvolvedor React Junior - Trabalho Remoto",
+        location="São Paulo, Brasil",
+        work_mode="remote",
+        seniority="junior",
+        description="ReactJS em produto web.",
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=[
+            "Desenvolvedora Frontend",
+            "Desenvolvedor React",
+            "Full Stack Developer",
+        ],
+        seniority=["Junior", "Pleno"],
+        technologies=[
+            "React",
+            "TypeScript",
+            "JavaScript",
+            "Node",
+            "Nest",
+            "Prisma",
+            "Vite",
+            "AWS",
+            "HTML",
+            "CSS",
+            "Frontend",
+            "Full Stack",
+        ],
+        work_modes=["Remoto"],
+        locations=["Brasil"],
+        required_terms=["React"],
+    )
+
+    analysis = build_job_analysis(job, preferences, [])
+
+    assert analysis.score >= 80
+    assert analysis.classification == "Aplicar"
+
+
+def test_build_job_analysis_rewards_resume_evidence_context() -> None:
+    job = _job(
+        job_id=1,
+        title="React Frontend Developer",
+        location="Remote Brazil",
+        work_mode="remote",
+        seniority="mid-level",
+        description="React TypeScript dashboard role for remote teams.",
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=["Frontend Developer"],
+        seniority=["mid-level"],
+        technologies=["React", "TypeScript"],
+        work_modes=["remote"],
+        locations=["Brazil"],
+        required_terms=["dashboard"],
+        undesired_terms=["WordPress"],
+    )
+    profile_items = [
+        ProfileItem(
+            id=None,
+            user_id=1,
+            item_type="technology",
+            name="React",
+            evidence="Built production dashboards with React and TypeScript.",
+        ),
+        ProfileItem(
+            id=None,
+            user_id=1,
+            item_type="project",
+            name="TypeScript dashboard",
+            evidence="Consumed REST APIs for remote product teams.",
+        ),
+    ]
+
+    analysis = build_job_analysis(job, preferences, profile_items)
+
+    assert analysis.score == 100
+    assert analysis.classification == "Aplicar"
+    assert "react" in analysis.matched_terms
 
 
 def test_scoring_service_saves_analysis_for_new_jobs(tmp_path: Path) -> None:

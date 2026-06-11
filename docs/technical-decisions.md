@@ -51,6 +51,19 @@ Motivos:
 - Fácil de testar.
 - Não depende de APIs pagas.
 
+Atualização em 2026-06-11:
+
+- O score determinístico deve ser calibrado durante o Épico 6 usando vagas reais já coletadas.
+- A regra de negócio detalhada fica em [Modelo de Score](scoring-model.md).
+- O score passa a ser em camadas e compara requisitos visíveis da vaga com evidências reais do currículo.
+- Listas longas de cargos e tecnologias são preferências alternativas, não uma lista de requisitos que todos precisam aparecer na vaga.
+- Tecnologias configuradas ajudam a identificar requisitos relevantes, mas evidências em `profile_items` têm maior valor.
+- Evidências em experiências, projetos e certificações devem valer mais que palavras soltas.
+- O score deve usar cobertura suficiente por categoria: bom match de cargo, requisitos técnicos cobertos pelo currículo, evidência contextual e termos prioritários podem gerar pontuação alta.
+- Campos ausentes ou pobres no e-mail devem reduzir confiança, mas não descartar automaticamente uma vaga.
+- Termos indesejados continuam sendo penalização forte, pois representam preferência explícita de descarte.
+- Variações comuns devem ser normalizadas antes do score, por exemplo `Frontend`, `Front-end`, `Fullstack`, `Full Stack`, `Remoto`, `remote`, `Brasil` e `Brazil`.
+
 ## Decisão 6: Materiais por Templates Primeiro
 
 A primeira versão dos materiais deve usar templates locais.
@@ -112,6 +125,42 @@ Ferramentas recomendadas:
 - `pytest` para testes.
 - `ruff` para lint e formatação.
 
+## Decisão 10: Extração Multi-vaga em Alertas Digest
+
+E-mails de alerta podem conter uma lista de vagas, não apenas uma vaga.
+
+Regras:
+
+- Parsers específicos por provedor devem tentar extrair múltiplas vagas quando o texto bruto contém blocos repetidos de cargo, empresa, localização e link.
+- LinkedIn, Indeed e Glassdoor devem ter tratamento específico antes de cair no parser genérico.
+- O parser genérico continua existindo como fallback para e-mails desconhecidos.
+- Quando um e-mail digest já gerou vagas internas, o registro genérico do alerta deve ser tratado como duplicado/ruído para não aparecer como oportunidade nova.
+- O texto e HTML brutos continuam sendo preservados para permitir reprocessamento após melhorias de parser.
+
+Motivos:
+
+- Alertas como LinkedIn, Indeed e Glassdoor frequentemente enviam várias vagas por e-mail.
+- Considerar apenas o assunto do e-mail subestima a quantidade de oportunidades e prejudica o score.
+- Reprocessar e-mails brutos evita depender de nova coleta no Gmail para corrigir extrações antigas.
+
+## Decisão 11: IA Como Camada Opcional Futura
+
+IA generativa pode ser útil para interpretar descrições vagas e comparar com o currículo, mas não deve ser requisito obrigatório neste momento.
+
+Regras:
+
+- Primeiro calibrar extração, normalização, limpeza e score determinístico no Épico 6.
+- IA pode ser avaliada depois como segunda camada, preferencialmente para vagas `Avaliar`, vagas com score intermediário ou vagas com baixa confiança.
+- A IA deve retornar dados estruturados e auditáveis: score, classificação, pontos fortes, gaps, motivo e confiança.
+- A IA deve usar somente dados reais cadastrados no perfil e currículo; não pode inventar experiências, habilidades, empresas, datas ou conquistas.
+- O sistema deve continuar útil sem IA, mantendo o princípio local-first e sem dependência paga obrigatória.
+
+Motivos:
+
+- Score determinístico é mais barato, testável e previsível.
+- IA pode melhorar interpretação sem substituir regras básicas de privacidade, custo e explicabilidade.
+- Usar IA cedo demais pode mascarar problemas de parser e dados incompletos.
+
 ## Decisões em Aberto
 
 Precisam de confirmação do usuário:
@@ -121,6 +170,7 @@ Precisam de confirmação do usuário:
 - Idioma dos materiais gerados.
 - Se os materiais devem seguir o idioma da vaga.
 - Idade máxima padrão das vagas.
-- Pesos iniciais do score.
 - Dados iniciais do perfil profissional.
 - Dados reais do currículo.
+- Limiar final de score para `Aplicar`, `Avaliar` e `Ignorar` após revisão manual das vagas reais.
+- Se a camada opcional de IA será local, via API gratuita/baixo custo ou adiada.

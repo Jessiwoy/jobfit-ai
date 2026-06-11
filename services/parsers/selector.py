@@ -3,6 +3,7 @@ from __future__ import annotations
 from core.models import EmailMessage, JobSource
 
 from services.parsers.generic_parser import GenericEmailParser
+from services.parsers.glassdoor_parser import GlassdoorEmailParser
 from services.parsers.indeed_parser import IndeedEmailParser
 from services.parsers.linkedin_parser import LinkedInEmailParser
 
@@ -18,5 +19,7 @@ def select_email_parser(
         return LinkedInEmailParser()
     if parser_key == "indeed":
         return IndeedEmailParser()
+    if parser_key == "glassdoor":
+        return GlassdoorEmailParser()
 
     return GenericEmailParser()

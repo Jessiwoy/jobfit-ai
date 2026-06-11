@@ -528,6 +528,9 @@ def render_sync() -> None:
     if st.button("Reprocessar e-mails com erro"):
         reprocess_failed_emails(int(process_limit))
 
+    if st.button("Reprocessar e-mails ja processados"):
+        reprocess_processed_emails(int(process_limit))
+
     st.subheader("Limpeza")
     max_age_days = st.number_input(
         "Idade maxima da vaga em dias",
@@ -660,6 +663,20 @@ def reprocess_failed_emails(limit: int) -> None:
     st.success(
         "Reprocessamento concluido. "
         f"{summary.created_jobs} vaga(s) criada(s), "
+        f"{summary.failed_messages} erro(s)."
+    )
+
+
+def reprocess_processed_emails(limit: int) -> None:
+    summary = JobProcessingService(get_database_path()).reprocess_processed_messages(limit=limit)
+
+    if summary.processed_messages == 0:
+        st.info("Nao ha e-mails processados para reprocessar.")
+        return
+
+    st.success(
+        "Reprocessamento concluido. "
+        f"{summary.created_jobs} nova(s) vaga(s) criada(s), "
         f"{summary.failed_messages} erro(s)."
     )
 

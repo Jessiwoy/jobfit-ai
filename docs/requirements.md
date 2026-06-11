@@ -64,6 +64,13 @@ Extrair e salvar:
 - Data da vaga.
 - Descrição, quando disponível.
 
+Regras de extração:
+
+- Um e-mail pode gerar uma ou mais vagas.
+- Alertas digest de LinkedIn, Indeed e Glassdoor devem ser separados em vagas individuais quando o texto bruto permitir.
+- Quando um e-mail digest gerar vagas individuais, o título genérico do alerta não deve aparecer como oportunidade nova.
+- E-mails já processados devem poder ser reprocessados após melhoria de parser, usando o texto e HTML brutos salvos.
+
 ### 2. Limpeza
 
 Remover, ocultar ou marcar:
@@ -90,6 +97,20 @@ Classificações:
 - `Aplicar`
 - `Avaliar`
 - `Ignorar`
+
+Regras de score determinístico:
+
+- O score deve ser explicável e testável.
+- A regra detalhada do score deve ficar documentada em [Modelo de Score](scoring-model.md).
+- O score deve normalizar variações comuns de grafia e idioma, como `ReactJS`, `React.js`, `Frontend`, `Front-end`, `Fullstack`, `Full Stack`, `Remoto`, `remote`, `Brasil` e `Brazil`.
+- Cargos e tecnologias configurados representam alternativas desejadas, não uma lista em que todos os itens precisam aparecer.
+- O score deve comparar requisitos visíveis da vaga com dados reais do currículo quando esses dados estiverem cadastrados.
+- Evidências em experiências, projetos e exemplos reais devem valer mais do que palavras soltas.
+- Vagas boas não devem receber score baixo apenas porque o e-mail contém uma descrição incompleta.
+- Termos obrigatórios devem aumentar a relevância quando aparecem.
+- Termos indesejados devem penalizar fortemente a vaga.
+- Localização `Brasil` deve aceitar cidades brasileiras ou vagas remotas no Brasil quando não houver evidência clara de incompatibilidade.
+- O score deve ser calibrado com revisão manual das vagas reais antes de avançar para geração de materiais.
 
 ### 4. Materiais
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -104,9 +105,14 @@ def build_job_analysis(
         raise ValueError("Nao e possivel analisar vaga sem ID.")
 
     job_text = _job_text(job)
-    profile_terms = _profile_terms(profile_items)
-    desired_title_matches = _matched_terms(job_text, preferences.desired_titles)
-    technology_matches = _matched_terms(job_text, preferences.technologies + profile_terms)
+    desired_title_matches = _matched_title_terms(job, preferences.desired_titles)
+    skill_requirements = _matched_terms(job_text, _skill_vocabulary(preferences, profile_items))
+    resume_supported_skills = _resume_supported_terms(
+        skill_requirements,
+        preferences,
+        profile_items,
+    )
+    evidenced_skills = _evidenced_terms(resume_supported_skills, profile_items)
     work_mode_matches = _matched_terms(_normalize(job.work_mode), preferences.work_modes)
     location_matches = _matched_terms(_normalize(job.location), preferences.locations)
     seniority_matches = _matched_terms(_normalize(job.seniority), preferences.seniority)
@@ -117,41 +123,72 @@ def build_job_analysis(
     strengths = []
     gaps = []
 
-    score += _weighted_score(desired_title_matches, preferences.desired_titles, 20)
+    score += _coverage_score(
+        desired_title_matches,
+        preferences.desired_titles,
+        weight=20,
+        target_matches=1,
+    )
     if desired_title_matches:
-        strengths.append("Cargo alinhado com as preferências.")
+        strengths.append("Cargo ou função compatível com o alvo profissional.")
     elif preferences.desired_titles:
-        gaps.append("Cargo não corresponde claramente aos cargos desejados.")
+        gaps.append("Cargo não corresponde claramente aos cargos alvo.")
 
-    score += _weighted_score(technology_matches, preferences.technologies + profile_terms, 30)
-    if technology_matches:
-        strengths.append("Tecnologias ou habilidades relevantes encontradas.")
-    elif preferences.technologies or profile_terms:
-        gaps.append("Tecnologias desejadas não aparecem claramente na vaga.")
+    score += _coverage_score(
+        resume_supported_skills,
+        skill_requirements,
+        weight=35,
+        target_matches=3,
+    )
+    if resume_supported_skills and profile_items:
+        strengths.append("Requisitos técnicos da vaga aparecem nos dados reais do currículo.")
+    elif resume_supported_skills:
+        strengths.append("Requisitos técnicos da vaga batem com tecnologias configuradas.")
+        gaps.append("Cadastre dados reais do currículo para confirmar evidências.")
+    elif skill_requirements:
+        gaps.append("Requisitos técnicos visíveis na vaga não têm evidência no currículo.")
+    elif preferences.technologies or profile_items:
+        gaps.append("A vaga não traz requisitos técnicos claros no texto extraído.")
 
-    score += _weighted_score(work_mode_matches, preferences.work_modes, 15)
-    if work_mode_matches:
-        strengths.append("Modalidade compatível.")
-    elif preferences.work_modes:
-        gaps.append("Modalidade não confirmada como compatível.")
+    score += _coverage_score(
+        evidenced_skills,
+        resume_supported_skills,
+        weight=15,
+        target_matches=2,
+    )
+    if evidenced_skills:
+        strengths.append("Há evidência contextual de habilidades em experiências ou projetos.")
+    elif resume_supported_skills and profile_items:
+        gaps.append("Habilidades encontradas sem evidência contextual forte no currículo.")
 
-    score += _weighted_score(location_matches, preferences.locations, 15)
-    if location_matches:
-        strengths.append("Localização compatível.")
-    elif preferences.locations:
-        gaps.append("Localização não confirmada como compatível.")
+    score += _coverage_score(
+        required_matches,
+        preferences.required_terms,
+        weight=10,
+        target_matches=1,
+    )
+    if required_matches:
+        strengths.append("Termos obrigatórios ou prioritários encontrados.")
+    elif preferences.required_terms:
+        gaps.append("Termos obrigatórios ou prioritários não aparecem claramente.")
 
-    score += _weighted_score(seniority_matches, preferences.seniority, 10)
+    score += _coverage_score(seniority_matches, preferences.seniority, weight=10, target_matches=1)
     if seniority_matches:
         strengths.append("Senioridade compatível.")
     elif preferences.seniority:
         gaps.append("Senioridade não confirmada como compatível.")
 
-    score += _weighted_score(required_matches, preferences.required_terms, 10)
-    if required_matches:
-        strengths.append("Termos obrigatórios encontrados.")
-    elif preferences.required_terms:
-        gaps.append("Termos obrigatórios não aparecem claramente.")
+    score += _coverage_score(work_mode_matches, preferences.work_modes, weight=5, target_matches=1)
+    if work_mode_matches:
+        strengths.append("Modalidade compatível.")
+    elif preferences.work_modes:
+        gaps.append("Modalidade não confirmada como compatível.")
+
+    score += _coverage_score(location_matches, preferences.locations, weight=5, target_matches=1)
+    if location_matches:
+        strengths.append("Localização compatível.")
+    elif preferences.locations:
+        gaps.append("Localização não confirmada como compatível.")
 
     if undesired_matches:
         score -= 30
@@ -161,7 +198,9 @@ def build_job_analysis(
     classification = _classification(normalized_score)
     matched_terms = _unique_terms(
         desired_title_matches
-        + technology_matches
+        + skill_requirements
+        + resume_supported_skills
+        + evidenced_skills
         + work_mode_matches
         + location_matches
         + seniority_matches
@@ -207,6 +246,100 @@ def _profile_terms(profile_items: list[ProfileItem]) -> list[str]:
     ]
 
 
+def _skill_vocabulary(
+    preferences: Preferences,
+    profile_items: list[ProfileItem],
+) -> list[str]:
+    profile_skill_terms = [
+        item.name
+        for item in profile_items
+        if item.item_type
+        in {
+            "technology",
+            "skill",
+            "experience",
+            "project",
+            "certification",
+            "language",
+        }
+        and item.name.strip()
+    ]
+    return _unique_terms(
+        preferences.technologies + preferences.required_terms + profile_skill_terms
+    )
+
+
+def _resume_supported_terms(
+    job_terms: list[str],
+    preferences: Preferences,
+    profile_items: list[ProfileItem],
+) -> list[str]:
+    if not job_terms:
+        return []
+
+    resume_text = _profile_text(profile_items)
+    if resume_text:
+        return _unique_terms(
+            [
+                term
+                for term in job_terms
+                if any(variant in resume_text for variant in _term_variants(term))
+            ]
+        )
+
+    declared_terms = _normalize(" ".join(preferences.technologies + preferences.required_terms))
+    return _unique_terms(
+        [
+            term
+            for term in job_terms
+            if any(variant in declared_terms for variant in _term_variants(term))
+        ]
+    )
+
+
+def _evidenced_terms(job_terms: list[str], profile_items: list[ProfileItem]) -> list[str]:
+    evidence_text = _profile_evidence_text(profile_items)
+    if not evidence_text:
+        return []
+
+    return _unique_terms(
+        [
+            term
+            for term in job_terms
+            if any(variant in evidence_text for variant in _term_variants(term))
+        ]
+    )
+
+
+def _profile_text(profile_items: list[ProfileItem]) -> str:
+    return _normalize(
+        " ".join(
+            " ".join(
+                str(value or "")
+                for value in [
+                    item.item_type,
+                    item.name,
+                    item.level,
+                    item.years_experience,
+                    item.evidence,
+                ]
+            )
+            for item in profile_items
+        )
+    )
+
+
+def _profile_evidence_text(profile_items: list[ProfileItem]) -> str:
+    evidence_parts = []
+    for item in profile_items:
+        if item.evidence:
+            evidence_parts.append(f"{item.name} {item.evidence}")
+        elif item.item_type in {"experience", "project", "certification"}:
+            evidence_parts.append(item.name)
+
+    return _normalize(" ".join(evidence_parts))
+
+
 def _has_scoring_criteria(
     preferences: Preferences,
     profile_items: list[ProfileItem],
@@ -225,17 +358,75 @@ def _has_scoring_criteria(
     )
 
 
-def _weighted_score(matches: list[str], expected_terms: list[str], weight: int) -> float:
+def _coverage_score(
+    matches: list[str],
+    expected_terms: list[str],
+    *,
+    weight: int,
+    target_matches: int,
+) -> float:
     terms = [term for term in expected_terms if term.strip()]
     if not terms:
         return 0
 
-    return weight * min(1, len(matches) / len(terms))
+    required_matches = max(1, min(len(terms), target_matches))
+    return weight * min(1, len(matches) / required_matches)
+
+
+def _matched_title_terms(job: Job, desired_titles: list[str]) -> list[str]:
+    title_text = _normalize(" ".join([job.title, job.description or ""]))
+    direct_matches = _matched_terms(title_text, desired_titles)
+    inferred_matches = [
+        term
+        for term in desired_titles
+        if _title_tokens_match(title_text, _normalize(term))
+    ]
+    return _unique_terms(direct_matches + inferred_matches)
+
+
+def _title_tokens_match(title_text: str, desired_title: str) -> bool:
+    if not desired_title:
+        return False
+
+    desired_tokens = _meaningful_tokens(desired_title)
+    if not desired_tokens:
+        return False
+
+    matched_tokens = [
+        token
+        for token in desired_tokens
+        if any(variant in title_text for variant in _term_variants(token))
+    ]
+
+    if {"react", "frontend", "front end", "fullstack", "full stack"} & set(desired_tokens):
+        return bool(matched_tokens)
+
+    return len(matched_tokens) >= min(2, len(desired_tokens))
+
+
+def _meaningful_tokens(value: str) -> set[str]:
+    ignored = {"de", "da", "do", "jr", "junior", "pleno", "senior"}
+    tokens = {token for token in value.split() if len(token) > 2 and token not in ignored}
+
+    if "front" in tokens and "end" in tokens:
+        tokens.add("frontend")
+    if "full" in tokens and "stack" in tokens:
+        tokens.add("fullstack")
+
+    return tokens
 
 
 def _matched_terms(text: str, terms: list[str]) -> list[str]:
-    normalized_terms = [_normalize(term) for term in terms if term.strip()]
-    return _unique_terms([term for term in normalized_terms if term and term in text])
+    matches = []
+    for term in terms:
+        normalized_term = _normalize(term)
+        if not normalized_term:
+            continue
+
+        if any(variant in text for variant in _term_variants(normalized_term)):
+            matches.append(normalized_term)
+
+    return _unique_terms(matches)
 
 
 def _missing_terms(preferences: Preferences, matched_terms: list[str]) -> list[str]:
@@ -294,4 +485,40 @@ def _normalize(value: str | None) -> str:
     if not value:
         return ""
 
-    return re.sub(r"\s+", " ", value).strip().lower()
+    without_accents = "".join(
+        char
+        for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
+    normalized = re.sub(r"[-_/.,()|]+", " ", without_accents).strip().lower()
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.replace("desenvolvedora", "desenvolvedor")
+
+
+def _term_variants(term: str) -> set[str]:
+    variants = {term}
+    synonym_groups = [
+        {"frontend", "front end"},
+        {"fullstack", "full stack"},
+        {"remoto", "remote", "trabalho remoto"},
+        {"hibrido", "hybrid"},
+        {"presencial", "onsite"},
+        {"brasil", "brazil"},
+        {"pleno", "mid level"},
+        {"junior", "jr"},
+    ]
+
+    for group in synonym_groups:
+        if term in group:
+            variants.update(group)
+
+    if "frontend" in term:
+        variants.add(term.replace("frontend", "front end"))
+    if "front end" in term:
+        variants.add(term.replace("front end", "frontend"))
+    if "fullstack" in term:
+        variants.add(term.replace("fullstack", "full stack"))
+    if "full stack" in term:
+        variants.add(term.replace("full stack", "fullstack"))
+
+    return variants

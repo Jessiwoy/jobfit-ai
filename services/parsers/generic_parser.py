@@ -43,34 +43,17 @@ class GenericEmailParser:
         if not title:
             return []
 
-        company = _extract_company(message, text)
-        job_url = _extract_first_url(text)
-        description = text[:4000] if text else None
-
-        job = Job(
-            id=None,
-            source_id=message.source_id,
-            email_message_id=message.id,
-            title=title,
-            company=company,
-            location=_extract_location(text),
-            work_mode=_extract_term(text, WORK_MODE_TERMS),
-            seniority=_extract_term(text, SENIORITY_TERMS),
-            job_url=job_url,
-            description=description,
-            posted_at=message.received_at,
-            source_job_id=message.gmail_message_id,
-            content_hash=_content_hash(
-                source_id=message.source_id,
+        return [
+            build_job_from_email(
+                message,
                 title=title,
-                company=company,
-                job_url=job_url,
-                description=description,
-            ),
-            provider=self.provider_name or message.detected_provider,
-        )
-
-        return [job]
+                company=_extract_company(message, text),
+                location=_extract_location(text),
+                job_url=_extract_first_url(text),
+                description=text[:4000] if text else None,
+                provider=self.provider_name,
+            )
+        ]
 
     def _extract_title(self, message: EmailMessage, text: str) -> str | None:
         subject = (message.subject or "").strip()
@@ -90,6 +73,45 @@ def _normalized_text(message: EmailMessage) -> str:
         part.strip()
         for part in [message.subject or "", message.raw_text or ""]
         if part and part.strip()
+    )
+
+
+def build_job_from_email(
+    message: EmailMessage,
+    *,
+    title: str,
+    company: str | None,
+    location: str | None,
+    job_url: str | None,
+    description: str | None,
+    provider: str | None,
+    source_job_id_suffix: str | None = None,
+) -> Job:
+    source_job_id = message.gmail_message_id
+    if source_job_id_suffix:
+        source_job_id = f"{source_job_id}:{source_job_id_suffix}"
+
+    return Job(
+        id=None,
+        source_id=message.source_id,
+        email_message_id=message.id,
+        title=_clean_title(title),
+        company=_clean_field(company) if company else None,
+        location=_clean_field(location) if location else None,
+        work_mode=_extract_term(description or "", WORK_MODE_TERMS),
+        seniority=_extract_term(" ".join([title, description or ""]), SENIORITY_TERMS),
+        job_url=job_url,
+        description=description,
+        posted_at=message.received_at,
+        source_job_id=source_job_id,
+        content_hash=_content_hash(
+            source_id=message.source_id,
+            title=title,
+            company=company,
+            job_url=job_url,
+            description=description,
+        ),
+        provider=provider or message.detected_provider,
     )
 
 

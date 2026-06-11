@@ -71,6 +71,7 @@ Antes de implementar ou alterar funcionalidades, leia:
 - [Dados Necessários](docs/data-requirements.md)
 - [Sprints e Épicos](docs/sprints-and-epics.md)
 - [Decisões Técnicas](docs/technical-decisions.md)
+- [Modelo de Score](docs/scoring-model.md)
 - [Design System](docs/design-system.md)
 
 Orientação para agentes:

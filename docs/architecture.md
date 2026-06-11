@@ -162,15 +162,20 @@ O parser deve tolerar dados incompletos e preservar o conteúdo bruto para repro
 
 A primeira versão do score deve ser determinística e explicável.
 
-Dimensões sugeridas:
+O modelo detalhado está documentado em [Modelo de Score](scoring-model.md).
+
+Dimensões principais:
 
 - Compatibilidade com cargo desejado.
-- Compatibilidade com tecnologias.
+- Requisitos técnicos da vaga cobertos por dados reais do currículo.
+- Evidência contextual em experiências, projetos, certificações ou habilidades.
 - Compatibilidade com senioridade.
 - Compatibilidade com modalidade.
 - Compatibilidade com localização.
 - Presença de termos obrigatórios.
 - Penalização por termos indesejados.
+
+Preferências configuradas ajudam a identificar requisitos relevantes, mas os dados reais do currículo devem ter mais peso que uma palavra solta.
 
 IA generativa não é obrigatória para a primeira versão.
 

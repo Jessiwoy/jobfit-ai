@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -58,7 +59,7 @@ class JobCleanupService:
 
     def _find_duplicate_ids(self, jobs: list[Job]) -> set[int]:
         seen_keys: set[str] = set()
-        duplicate_ids: set[int] = set()
+        duplicate_ids: set[int] = _find_digest_container_ids(jobs)
 
         for job in jobs:
             if job.id is None or job.status != "new":
@@ -130,6 +131,40 @@ def _deduplication_keys(job: Job) -> list[str]:
     return keys
 
 
+def _find_digest_container_ids(jobs: list[Job]) -> set[int]:
+    email_counts: dict[int, int] = {}
+    for job in jobs:
+        if job.email_message_id is None:
+            continue
+
+        email_counts[job.email_message_id] = email_counts.get(job.email_message_id, 0) + 1
+
+    return {
+        job.id
+        for job in jobs
+        if job.id is not None
+        and job.status == "new"
+        and job.email_message_id is not None
+        and email_counts.get(job.email_message_id, 0) > 1
+        and _is_digest_container_title(job.title)
+    }
+
+
+def _is_digest_container_title(title: str) -> bool:
+    normalized = _normalize_text(title)
+    return any(
+        marker in normalized
+        for marker in [
+            "novas vagas",
+            "outras vagas",
+            "candidate se agora",
+            "candidatar se agora",
+            "uma otima opcao",
+            "anunciada em",
+        ]
+    )
+
+
 def _normalize_url(value: str | None) -> str | None:
     if not value:
         return None
@@ -176,16 +211,13 @@ def _is_incompatible(job: Job, preferences: Preferences) -> bool:
     if _contains_any(searchable_text, preferences.undesired_terms):
         return True
 
-    if job.work_mode and preferences.work_modes:
-        return not _matches_any(job.work_mode, preferences.work_modes)
+    if _has_clear_work_mode_conflict(job.work_mode, preferences.work_modes):
+        return True
 
-    if job.location and preferences.locations:
-        return not _matches_any(job.location, preferences.locations)
+    if _has_clear_location_conflict(job.location, preferences.locations):
+        return True
 
-    if job.seniority and preferences.seniority:
-        return not _matches_any(job.seniority, preferences.seniority)
-
-    return False
+    return _has_clear_seniority_conflict(job.seniority, preferences.seniority)
 
 
 def _contains_any(value: str, terms: list[str]) -> bool:
@@ -200,8 +232,78 @@ def _matches_any(value: str, accepted_values: list[str]) -> bool:
     )
 
 
+def _has_clear_work_mode_conflict(value: str | None, accepted_values: list[str]) -> bool:
+    if not value or not accepted_values:
+        return False
+
+    normalized_value = _normalize_text(value)
+    accepted = {_normalize_text(item) for item in accepted_values if item.strip()}
+    if not accepted:
+        return False
+
+    remote_accepted = bool({"remote", "remoto", "trabalho remoto"} & accepted)
+    hybrid_accepted = bool({"hybrid", "hibrido", "hibrida"} & accepted)
+    onsite_accepted = bool({"onsite", "presencial"} & accepted)
+
+    if normalized_value in {"onsite", "presencial"}:
+        return not onsite_accepted
+    if normalized_value in {"hybrid", "hibrido", "hibrida"}:
+        return not (hybrid_accepted or onsite_accepted)
+    if normalized_value in {"remote", "remoto", "trabalho remoto"}:
+        return not remote_accepted
+
+    return False
+
+
+def _has_clear_location_conflict(value: str | None, accepted_values: list[str]) -> bool:
+    if not value or not accepted_values:
+        return False
+
+    normalized_value = _normalize_text(value)
+    accepted = [_normalize_text(item) for item in accepted_values if item.strip()]
+    if not accepted:
+        return False
+
+    if any(item in {"brasil", "brazil"} for item in accepted):
+        blocked_countries = {
+            "argentina",
+            "canada",
+            "chile",
+            "colombia",
+            "eua",
+            "estados unidos",
+            "mexico",
+            "portugal",
+            "united states",
+        }
+        return any(country in normalized_value for country in blocked_countries)
+
+    return not _matches_any(value, accepted_values)
+
+
+def _has_clear_seniority_conflict(value: str | None, accepted_values: list[str]) -> bool:
+    if not value or not accepted_values:
+        return False
+
+    normalized_value = _normalize_text(value)
+    accepted = {_normalize_text(item) for item in accepted_values if item.strip()}
+    if not accepted:
+        return False
+
+    if normalized_value in {"senior", "sr", "staff", "lead", "principal"}:
+        return not bool(accepted & {"senior", "sr", "staff", "lead", "principal"})
+
+    return False
+
+
 def _normalize_text(value: str | None) -> str:
     if not value:
         return ""
 
-    return re.sub(r"\s+", " ", value).strip().lower()
+    without_accents = "".join(
+        char
+        for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
+    normalized = re.sub(r"[-_/.,()|]+", " ", without_accents).strip().lower()
+    return re.sub(r"\s+", " ", normalized)

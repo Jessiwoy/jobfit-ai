@@ -28,6 +28,9 @@ class JobProcessingService:
     def process_new_messages(self, *, limit: int = 50) -> JobProcessingSummary:
         return self._process_messages_by_status("new", limit=limit)
 
+    def reprocess_processed_messages(self, *, limit: int = 50) -> JobProcessingSummary:
+        return self._process_messages_by_status("processed", limit=limit)
+
     def reprocess_failed_messages(self, *, limit: int = 50) -> JobProcessingSummary:
         return self._process_messages_by_status("error", limit=limit)
 

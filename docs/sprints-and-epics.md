@@ -2,7 +2,7 @@
 
 ## Estado Atual do Projeto
 
-Atualizado em 2026-06-10.
+Atualizado em 2026-06-11.
 
 Regra de sequenciamento:
 
@@ -47,12 +47,23 @@ Entregas já existentes:
 - Resumo de scores calculados por classificação e faixa de score.
 - Dashboard com filtros de score mínimo e classificação.
 - Dashboard em padrão master-detail com tabela compacta e painel de detalhes da vaga selecionada.
+- Extração multi-vaga para alertas digest de LinkedIn, Indeed e Glassdoor.
+- Reprocessamento manual de e-mails já processados para reaproveitar e-mails brutos após melhoria de parser.
+- Normalização de score para variações comuns como `ReactJS`, `Front-end`, `Frontend`, `Fullstack`, `Full Stack`, `Remoto` e `remote`.
+- Ajuste do score determinístico para não exigir correspondência de todos os cargos e tecnologias configurados.
+- Reformulação do score em camadas, comparando requisitos visíveis da vaga com evidências reais do currículo.
+- Documentação da regra de negócio do score em `docs/scoring-model.md`.
+- Limpeza menos agressiva para localização, evitando descartar cidades brasileiras quando `Brasil` está aceito.
+- Marcação de e-mails digest genéricos como duplicados quando as vagas internas já foram extraídas.
+- Validação local após reprocessamento: 324 vagas salvas, 155 vagas novas, 156 duplicadas e 13 incompatíveis.
+- Distribuição local atual dos scores: 1 `Aplicar`, 76 `Avaliar` e 78 `Ignorar`.
 
 Próximas entregas, em ordem:
 
-1. Configurar preferências e dados reais para validar scores com vagas locais.
-2. Ajustar pesos do score conforme o resultado real.
-3. Fechar o Épico 6 quando os scores estiverem coerentes.
+1. Revisar manualmente as vagas classificadas como `Avaliar` e ajustar pesos/limiares conforme o resultado real.
+2. Cadastrar dados reais do currículo em `profile_items` para melhorar explicação de pontos fortes e gaps.
+3. Fechar o Épico 6 quando os scores estiverem coerentes para uso diário.
+4. Avaliar uma camada opcional de IA somente depois do score determinístico estar calibrado e testável.
 
 ## Épico 1: Fundação do Projeto
 
@@ -117,12 +128,15 @@ Escopo esperado:
 - Parser genérico.
 - Parser para LinkedIn.
 - Parser para Indeed.
+- Parser para Glassdoor.
+- Extração de múltiplas vagas quando um e-mail de alerta contém uma lista/digest.
 - Extração de cargo, empresa, localização, URL, data e descrição.
 - Registro de falhas sem perder o e-mail bruto.
 
 Critério de aceite:
 
 - E-mails processados geram vagas no banco.
+- E-mails digest podem gerar mais de uma vaga quando o texto bruto contém blocos separados de vaga.
 - Extrações incompletas ficam visíveis e podem ser reprocessadas.
 
 ## Épico 5: Limpeza e Deduplicação
@@ -153,6 +167,11 @@ Escopo esperado:
 - Motivo da recomendação.
 - Classificação `Aplicar`, `Avaliar` ou `Ignorar`.
 - Recalcular scores quando preferências mudarem.
+- Normalizar variações comuns de termos em português e inglês.
+- Comparar requisitos técnicos visíveis na vaga com dados reais do currículo.
+- Valorizar evidências contextuais em experiências, projetos, certificações e habilidades reais.
+- Calibrar pesos com vagas reais antes de iniciar geração de materiais.
+- Evitar que listas longas de tecnologias reduzam artificialmente vagas boas.
 
 Critério de aceite:
 
