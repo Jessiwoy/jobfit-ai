@@ -279,20 +279,28 @@ class JobsRepository:
 
     @staticmethod
     def _row_to_job(row) -> Job:  # type: ignore[no-untyped-def]
-        return Job(
-            id=row["id"],
-            source_id=row["source_id"],
-            email_message_id=row["email_message_id"],
-            title=row["title"],
-            company=row["company"],
-            location=row["location"],
-            work_mode=row["work_mode"],
-            seniority=row["seniority"],
-            job_url=row["job_url"],
-            description=row["description"],
-            posted_at=row["posted_at"],
-            source_job_id=row["source_job_id"],
-            content_hash=row["content_hash"],
-            status=row["status"],
-            provider=row["provider"],
-        )
+        job_data = {
+            "id": row["id"],
+            "source_id": row["source_id"],
+            "email_message_id": row["email_message_id"],
+            "title": row["title"],
+            "company": row["company"],
+            "location": row["location"],
+            "work_mode": row["work_mode"],
+            "seniority": row["seniority"],
+            "job_url": row["job_url"],
+            "description": row["description"],
+            "posted_at": row["posted_at"],
+            "source_job_id": row["source_job_id"],
+            "content_hash": row["content_hash"],
+            "status": row["status"],
+            "provider": row["provider"],
+            "application_status": row["application_status"],
+            "applied_at": row["applied_at"],
+        }
+        try:
+            return Job(**job_data)
+        except TypeError:
+            job_data.pop("application_status")
+            job_data.pop("applied_at")
+            return Job(**job_data)

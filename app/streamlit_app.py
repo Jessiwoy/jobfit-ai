@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import streamlit as st  # noqa: E402
 from core.analysis_models import JobAnalysis  # noqa: E402
 from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH, ROOT_DIR  # noqa: E402
-from core.database import connect, get_database_path, initialize_database  # noqa: E402
+from core.database import get_database_path, initialize_database  # noqa: E402
 from core.models import Job, JobSource, ProfileItem  # noqa: E402
 from repositories.analyses_repository import AnalysesRepository  # noqa: E402
 from repositories.email_messages_repository import EmailMessagesRepository  # noqa: E402
@@ -93,7 +93,7 @@ def render_dashboard() -> None:
     st.header("Dashboard")
     st.caption("Priorize vagas por aderencia ao curriculo e revise os detalhes sem sair da tela.")
 
-    jobs_repository = get_jobs_repository()
+    jobs_repository = JobsRepository(get_database_path())
     filters = render_dashboard_filters()
 
     all_jobs = jobs_repository.list_recent(limit=10000)
@@ -138,7 +138,7 @@ def render_applications() -> None:
     st.header("Candidaturas")
     st.caption("Acompanhe as vagas em que voce ja se candidatou.")
 
-    jobs_repository = get_jobs_repository()
+    jobs_repository = JobsRepository(get_database_path())
     applied_jobs = jobs_repository.list_applied(limit=500)
     if not applied_jobs:
         st.info("Nenhuma candidatura marcada ainda.")
@@ -148,16 +148,11 @@ def render_applications() -> None:
     analyses_by_job_id = analyses_repository.list_by_job_ids(
         [job.id for job in applied_jobs if job.id is not None]
     )
-    application_metadata = get_jobs_application_metadata(
-        [job.id for job in applied_jobs if job.id is not None]
-    )
-
     list_column, detail_column = st.columns([1.05, 1], gap="large")
     with list_column:
         selected_job_id = render_applications_table(
             applied_jobs,
             analyses_by_job_id,
-            application_metadata,
         )
 
     selected_job = next((job for job in applied_jobs if job.id == selected_job_id), applied_jobs[0])
@@ -168,7 +163,6 @@ def render_applications() -> None:
 def render_applications_table(
     jobs: list[Job],
     analyses_by_job_id: dict[int, JobAnalysis],
-    application_metadata: dict[int, dict[str, str | None]],
 ) -> int | None:
     selected_job_id = st.session_state.get("applications_selected_job_id")
     if selected_job_id not in {job.id for job in jobs}:
@@ -176,9 +170,7 @@ def render_applications_table(
 
     rows = [
         {
-            "Aplicada em": format_applied_at(
-                application_metadata.get(job.id or 0, {}).get("applied_at")
-            ),
+            "Aplicada em": format_applied_at(job.applied_at),
             "Score": analyses_by_job_id[job.id].score
             if job.id in analyses_by_job_id
             else None,
@@ -513,72 +505,16 @@ def render_application_action(job: Job) -> None:
     if job.id is None:
         return
 
-    application_status = get_job_application_status(job.id)
-    if application_status == "applied":
+    jobs_repository = JobsRepository(get_database_path())
+    if job.application_status == "applied":
         if st.button("Desmarcar candidatura", use_container_width=True):
-            update_job_application_status(job.id, "not_applied")
+            jobs_repository.update_application_status(job.id, "not_applied")
             st.rerun()
         return
 
     if st.button("Marcar como aplicada", type="primary", use_container_width=True):
-        update_job_application_status(job.id, "applied")
+        jobs_repository.update_application_status(job.id, "applied")
         st.rerun()
-
-
-def get_jobs_repository():  # type: ignore[no-untyped-def]
-    import repositories.jobs_repository as jobs_repository_module
-
-    reloaded_jobs_repository = reload(jobs_repository_module)
-    return reloaded_jobs_repository.JobsRepository(get_database_path())
-
-
-def get_job_application_status(job_id: int) -> str:
-    metadata = get_jobs_application_metadata([job_id])
-    return metadata.get(job_id, {}).get("application_status") or "not_applied"
-
-
-def get_jobs_application_metadata(job_ids: list[int]) -> dict[int, dict[str, str | None]]:
-    if not job_ids:
-        return {}
-
-    placeholders = ",".join("?" for _ in job_ids)
-    try:
-        with connect(get_database_path()) as connection:
-            rows = connection.execute(
-                f"""
-                SELECT id, application_status, applied_at
-                FROM jobs
-                WHERE id IN ({placeholders})
-                """,
-                job_ids,
-            ).fetchall()
-    except Exception:
-        return {}
-
-    return {
-        row["id"]: {
-            "application_status": row["application_status"],
-            "applied_at": row["applied_at"],
-        }
-        for row in rows
-    }
-
-
-def update_job_application_status(job_id: int, application_status: str) -> None:
-    applied_at_expression = (
-        "CURRENT_TIMESTAMP" if application_status == "applied" else "NULL"
-    )
-    with connect(get_database_path()) as connection:
-        connection.execute(
-            f"""
-            UPDATE jobs
-            SET application_status = ?,
-                applied_at = {applied_at_expression},
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (application_status, job_id),
-        )
 
 
 def extract_display_job_description(description: str | None) -> str:

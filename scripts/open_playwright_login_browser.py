@@ -4,6 +4,10 @@ import time
 
 from core.config import ROOT_DIR
 from playwright.sync_api import sync_playwright
+from services.browser_detection import (
+    get_preferred_browser_launch_config,
+    launch_persistent_chromium_context,
+)
 
 LOGIN_URLS = [
     "https://www.linkedin.com/login",
@@ -15,10 +19,13 @@ LOGIN_URLS = [
 def main() -> None:
     user_data_dir = ROOT_DIR / "data" / "playwright-profile"
     user_data_dir.mkdir(parents=True, exist_ok=True)
+    browser_config = get_preferred_browser_launch_config()
+    print(f"Abrindo login com: {browser_config.display_name}")
 
     with sync_playwright() as playwright:
-        context = playwright.chromium.launch_persistent_context(
-            str(user_data_dir),
+        context = launch_persistent_chromium_context(
+            playwright,
+            user_data_dir,
             headless=False,
             viewport={"width": 1366, "height": 900},
         )

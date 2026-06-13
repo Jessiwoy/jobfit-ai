@@ -78,6 +78,39 @@ Visualizar vaga: https://www.linkedin.com/comm/jobs/view/222/?trackingId=b
     assert jobs[0].job_url == "https://www.linkedin.com/comm/jobs/view/111/?trackingId=a"
 
 
+def test_linkedin_parser_accepts_regular_jobs_view_urls() -> None:
+    message = EmailMessage(
+        id=1,
+        source_id=1,
+        gmail_message_id="msg-1",
+        gmail_thread_id="thread-1",
+        gmail_label_name="Job Alerts",
+        received_at="2026-06-12T10:00:00-03:00",
+        raw_text="""
+Resultados da nova pesquisa de vagas por IA
+
+Desenvolvedor Fullstack
+Acme
+Brasil
+Visualizar vaga: https://www.linkedin.com/jobs/view/4417966383/?trk=eml-email
+
+---------------------------------------------------------
+
+Frontend Developer
+Example Co
+Brasil
+Visualizar vaga: https://www.linkedin.com/jobs/view/4417966384/?trk=eml-email
+""",
+        detected_provider="linkedin",
+    )
+
+    jobs = LinkedInEmailParser().parse(message)
+
+    assert [job.title for job in jobs] == ["Desenvolvedor Fullstack", "Frontend Developer"]
+    assert [job.company for job in jobs] == ["Acme", "Example Co"]
+    assert jobs[0].job_url == "https://www.linkedin.com/jobs/view/4417966383/?trk=eml-email"
+
+
 def test_glassdoor_parser_extracts_multiple_jobs_from_alert() -> None:
     message = EmailMessage(
         id=1,

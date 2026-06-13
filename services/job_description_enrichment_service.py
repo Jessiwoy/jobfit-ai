@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 from core.models import Job
 from repositories.jobs_repository import JobsRepository
 
+from services.browser_detection import launch_persistent_chromium_context
+
 DESCRIPTION_SELECTORS = [
     "div.jobs-description__content",
     "div.jobs-box__html-content",
@@ -148,8 +150,9 @@ class JobDescriptionEnrichmentService:
                     browser = playwright.chromium.connect_over_cdp(self._cdp_url)
                     context = browser.contexts[0] if browser.contexts else browser.new_context()
                 else:
-                    context = playwright.chromium.launch_persistent_context(
-                        str(self._user_data_dir),
+                    context = launch_persistent_chromium_context(
+                        playwright,
+                        self._user_data_dir,
                         headless=False,
                         viewport={"width": 1366, "height": 900},
                     )
@@ -217,8 +220,9 @@ class JobDescriptionEnrichmentService:
                     browser = playwright.chromium.connect_over_cdp(self._cdp_url)
                     context = browser.contexts[0] if browser.contexts else browser.new_context()
                 else:
-                    context = playwright.chromium.launch_persistent_context(
-                        str(self._user_data_dir),
+                    context = launch_persistent_chromium_context(
+                        playwright,
+                        self._user_data_dir,
                         headless=False,
                         viewport={"width": 1366, "height": 900},
                     )

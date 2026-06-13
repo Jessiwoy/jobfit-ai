@@ -7,7 +7,7 @@ from core.models import EmailMessage, Job
 from services.parsers.generic_parser import GenericEmailParser, _clean_title, build_job_from_email
 
 LINKEDIN_JOB_URL_PATTERN = re.compile(
-    r"Visualizar\s+vaga:\s*(?P<url>https?://www\.linkedin\.com/comm/jobs/view/[^\s]+)",
+    r"Visualizar\s+vaga:\s*(?P<url>https?://www\.linkedin\.com/(?:comm/)?jobs/view/[^\s]+)",
     re.IGNORECASE,
 )
 LINKEDIN_SKIP_LINES = (
