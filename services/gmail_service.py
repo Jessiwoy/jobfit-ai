@@ -9,6 +9,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH
 from core.models import EmailMessage, JobSource
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -18,6 +19,10 @@ GMAIL_READONLY_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 
 class GmailCredentialsMissingError(FileNotFoundError):
+    pass
+
+
+class GmailAuthenticationError(RuntimeError):
     pass
 
 
@@ -164,9 +169,16 @@ class GmailService:
             return credentials
 
         if credentials and credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
-            self._save_token(credentials)
-            return credentials
+            try:
+                credentials.refresh(Request())
+                self._save_token(credentials)
+                return credentials
+            except RefreshError as error:
+                self._raise_reauthorization_required(error)
+            except Exception as error:
+                if _is_invalid_grant_error(error):
+                    self._raise_reauthorization_required(error)
+                raise
 
         if not self._credentials_path.exists():
             raise GmailCredentialsMissingError(
@@ -177,7 +189,12 @@ class GmailService:
             str(self._credentials_path),
             GMAIL_READONLY_SCOPES,
         )
-        credentials = flow.run_local_server(port=0)
+        try:
+            credentials = flow.run_local_server(port=0)
+        except Exception as error:
+            if _is_invalid_grant_error(error):
+                self._raise_reauthorization_required(error)
+            raise
         self._save_token(credentials)
         return credentials
 
@@ -193,6 +210,22 @@ class GmailService:
     def _save_token(self, credentials: Credentials) -> None:
         self._token_path.parent.mkdir(parents=True, exist_ok=True)
         self._token_path.write_text(credentials.to_json(), encoding="utf-8")
+
+    def _delete_token(self) -> None:
+        if self._token_path.exists():
+            self._token_path.unlink()
+
+    def _raise_reauthorization_required(self, error: Exception) -> None:
+        self._delete_token()
+        raise GmailAuthenticationError(
+            "A autorizacao do Gmail expirou ou foi revogada. "
+            "O token local antigo foi removido. Clique em buscar e-mails novamente "
+            "e autorize a conta no navegador."
+        ) from error
+
+
+def _is_invalid_grant_error(error: Exception) -> bool:
+    return "invalid_grant" in str(error).lower()
 
 
 def detect_provider(content: str) -> str | None:

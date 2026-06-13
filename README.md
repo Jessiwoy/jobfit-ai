@@ -125,6 +125,12 @@ Rodar testes:
 .\.venv\Scripts\python.exe -m pytest
 ```
 
+Instalar navegador do Playwright para enriquecer descricoes de vagas:
+
+```powershell
+.\.venv\Scripts\python.exe -m playwright install chromium
+```
+
 Inicializar banco local:
 
 ```powershell
@@ -136,6 +142,31 @@ Abrir app Streamlit:
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run app\streamlit_app.py
 ```
+
+### Enriquecimento de descricoes de vagas
+
+Ao recalcular scores, o app tenta enriquecer automaticamente a descricao das vagas novas que
+possuem link original. Esse fluxo usa Playwright, abre as paginas das vagas que serao pontuadas,
+salva a descricao encontrada e calcula o score a partir do texto enriquecido.
+
+Por padrao, o app abre um perfil local em:
+
+```text
+data/playwright-profile
+```
+
+Se a pagina exigir login, o app abre automaticamente o navegador persistente. Faca login no
+navegador aberto, feche a janela quando terminar e recalcule os scores. O app nao salva senhas no
+banco; ele reaproveita a sessao local do navegador em `data/playwright-profile`.
+
+Para conectar em um Chrome ja aberto com remote debugging, inicie o Chrome manualmente com uma
+porta de depuracao e defina:
+
+```powershell
+$env:JOBFIT_CHROME_CDP_URL="http://localhost:9222"
+```
+
+Esse recurso e limitado ao fluxo de score das vagas novas, sem varrer vagas fora da triagem atual.
 
 ### Gmail API
 

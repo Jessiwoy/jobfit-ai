@@ -2,8 +2,11 @@ from pathlib import Path
 
 import pytest
 from core.models import JobSource
+from google.auth.exceptions import RefreshError
+from google.oauth2.credentials import Credentials
 from services.gmail_service import (
     GMAIL_READONLY_SCOPES,
+    GmailAuthenticationError,
     GmailCredentialsMissingError,
     GmailLabel,
     GmailService,
@@ -46,6 +49,79 @@ def test_missing_credentials_raise_clear_error(tmp_path: Path) -> None:
 
     with pytest.raises(GmailCredentialsMissingError):
         service.build_client()
+
+
+def test_expired_revoked_token_is_removed_and_reports_reauthorization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token_path = tmp_path / "token.json"
+    token_path.write_text(
+        """
+        {
+          "token": "expired-token",
+          "refresh_token": "revoked-refresh-token",
+          "token_uri": "https://oauth2.googleapis.com/token",
+          "client_id": "client-id",
+          "client_secret": "client-secret",
+          "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
+          "expiry": "2000-01-01T00:00:00Z"
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    def fail_refresh(self: Credentials, request: object) -> None:
+        raise RefreshError("invalid_grant: Token has been expired or revoked.")
+
+    monkeypatch.setattr(Credentials, "refresh", fail_refresh)
+    service = GmailService(
+        credentials_path=tmp_path / "credentials.json",
+        token_path=token_path,
+    )
+
+    with pytest.raises(GmailAuthenticationError):
+        service.build_client()
+
+    assert not token_path.exists()
+
+
+def test_invalid_grant_from_non_refresh_error_removes_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token_path = tmp_path / "token.json"
+    token_path.write_text(
+        """
+        {
+          "token": "expired-token",
+          "refresh_token": "revoked-refresh-token",
+          "token_uri": "https://oauth2.googleapis.com/token",
+          "client_id": "client-id",
+          "client_secret": "client-secret",
+          "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
+          "expiry": "2000-01-01T00:00:00Z"
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    def fail_refresh(self: Credentials, request: object) -> None:
+        raise RuntimeError(
+            "('invalid_grant: Token has been expired or revoked.', "
+            "{'error': 'invalid_grant'})"
+        )
+
+    monkeypatch.setattr(Credentials, "refresh", fail_refresh)
+    service = GmailService(
+        credentials_path=tmp_path / "credentials.json",
+        token_path=token_path,
+    )
+
+    with pytest.raises(GmailAuthenticationError):
+        service.build_client()
+
+    assert not token_path.exists()
 
 
 def test_detect_provider_from_content() -> None:

@@ -6,5 +6,6 @@ beautifulsoup4
 python-dateutil
 pydantic
 pypdf
+playwright
 pytest
 ruff

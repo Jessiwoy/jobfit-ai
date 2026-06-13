@@ -5,7 +5,11 @@ import unicodedata
 
 from core.models import EmailMessage, Job
 
-from services.parsers.generic_parser import GenericEmailParser, build_job_from_email
+from services.parsers.generic_parser import (
+    GenericEmailParser,
+    build_job_from_email,
+    extract_relative_posted_at,
+)
 
 RATING_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?\s*★$")
 JOB_TITLE_KEYWORDS = (
@@ -75,6 +79,7 @@ class GlassdoorEmailParser(GenericEmailParser):
                 title=lines[line_index],
                 company=company,
                 location=location,
+                posted_text=_next_posted_text(lines, line_index),
             )
             jobs.append(
                 build_job_from_email(
@@ -86,6 +91,10 @@ class GlassdoorEmailParser(GenericEmailParser):
                     description=description,
                     provider=self.provider_name,
                     source_job_id_suffix=f"glassdoor-{index}",
+                    posted_at=extract_relative_posted_at(
+                        _next_posted_text(lines, line_index) or "",
+                        message.received_at,
+                    ),
                 )
             )
 
@@ -150,6 +159,14 @@ def _next_location(lines: list[str], title_index: int) -> str | None:
     return value
 
 
+def _next_posted_text(lines: list[str], title_index: int) -> str | None:
+    for value in lines[title_index + 1 : title_index + 5]:
+        if re.search(r"\d+\s+dia\(s\)", _normalize(value)):
+            return value
+
+    return None
+
+
 def _is_company(value: str) -> bool:
     normalized = _normalize(value)
     if normalized in METADATA_VALUES or normalized.startswith(METADATA_PREFIXES):
@@ -174,8 +191,14 @@ def _job_listing_lines(lines: list[str]) -> list[str]:
     return sliced
 
 
-def _build_description(*, title: str, company: str, location: str | None) -> str:
-    return "\n".join(item for item in [title, company, location] if item)[:4000]
+def _build_description(
+    *,
+    title: str,
+    company: str,
+    location: str | None,
+    posted_text: str | None,
+) -> str:
+    return "\n".join(item for item in [title, company, location, posted_text] if item)[:4000]
 
 
 def _normalize(value: str) -> str:

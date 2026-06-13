@@ -1,33 +1,50 @@
 from __future__ import annotations
 
+import os
+import re
+import subprocess
+import sys
+from datetime import date, datetime, timedelta
+from importlib import reload
+from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
-import streamlit as st
-from core.analysis_models import JobAnalysis
-from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH, ROOT_DIR
-from core.database import get_database_path, initialize_database
-from core.models import Job, JobSource, ProfileItem
-from repositories.analyses_repository import AnalysesRepository
-from repositories.email_messages_repository import EmailMessagesRepository
-from repositories.job_sources_repository import JobSourcesRepository
-from repositories.jobs_repository import JobsRepository
-from repositories.preferences_repository import PreferencesRepository
-from repositories.profile_items_repository import ProfileItemsRepository
-from repositories.user_repository import UserRepository
-from services.gmail_service import (
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import streamlit as st  # noqa: E402
+from core.analysis_models import JobAnalysis  # noqa: E402
+from core.config import GMAIL_CREDENTIALS_PATH, GMAIL_TOKEN_PATH, ROOT_DIR  # noqa: E402
+from core.database import connect, get_database_path, initialize_database  # noqa: E402
+from core.models import Job, JobSource, ProfileItem  # noqa: E402
+from repositories.analyses_repository import AnalysesRepository  # noqa: E402
+from repositories.email_messages_repository import EmailMessagesRepository  # noqa: E402
+from repositories.job_sources_repository import JobSourcesRepository  # noqa: E402
+from repositories.jobs_repository import JobsRepository  # noqa: E402
+from repositories.preferences_repository import PreferencesRepository  # noqa: E402
+from repositories.profile_items_repository import ProfileItemsRepository  # noqa: E402
+from repositories.user_repository import UserRepository  # noqa: E402
+from services.gmail_service import (  # noqa: E402
     GmailCredentialsMissingError,
     GmailLabelNotFoundError,
     GmailService,
 )
-from services.gmail_sync_service import GmailSyncService
-from services.job_cleanup_service import JobCleanupService
-from services.job_processing_service import JobProcessingService
-from services.resume_pdf_service import (
+
+try:
+    from services.gmail_service import GmailAuthenticationError
+except ImportError:  # pragma: no cover - compatibility with stale Streamlit reloads
+    GmailAuthenticationError = RuntimeError
+from services.gmail_sync_service import GmailSyncService  # noqa: E402
+from services.job_cleanup_service import JobCleanupService  # noqa: E402
+from services.job_processing_service import JobProcessingService  # noqa: E402
+from services.resume_pdf_service import (  # noqa: E402
     build_resume_autofill,
     extract_resume_pdf,
     write_profile_extracted,
 )
-from services.scoring_service import ScoringService
+from services.scoring_service import ScoringService  # noqa: E402
 
 JOB_STATUS_LABELS = {
     "new": "Nova",
@@ -43,11 +60,14 @@ EMAIL_STATUS_LABELS = {
 }
 
 CLASSIFICATION_FILTER_LABELS = ["Sem score", "Aplicar", "Avaliar", "Ignorar"]
+POSTED_DATE_FILTER_LABELS = ["Todas", "Hoje", "Esta semana", "Este mes", "Sem data"]
+ENRICHED_DESCRIPTION_HEADER = "Descricao extraida da pagina da vaga"
 PROFILE_EXTRACTED_PATH = ROOT_DIR / "references" / "profile-extracted.md"
 
 
 def main() -> None:
     st.set_page_config(page_title="JobFit AI", page_icon="JF", layout="wide")
+    apply_dashboard_styles()
 
     initialize_database()
 
@@ -56,11 +76,13 @@ def main() -> None:
 
     page = st.sidebar.radio(
         "Menu",
-        ["Dashboard", "Configuracoes", "Sincronizacao"],
+        ["Dashboard", "Candidaturas", "Configuracoes", "Sincronizacao"],
     )
 
     if page == "Dashboard":
         render_dashboard()
+    elif page == "Candidaturas":
+        render_applications()
     elif page == "Configuracoes":
         render_settings()
     else:
@@ -69,63 +91,274 @@ def main() -> None:
 
 def render_dashboard() -> None:
     st.header("Dashboard")
+    st.caption("Priorize vagas por aderencia ao curriculo e revise os detalhes sem sair da tela.")
 
-    jobs_repository = JobsRepository(get_database_path())
-    selected_status_labels = st.multiselect(
-        "Status",
-        options=list(JOB_STATUS_LABELS.values()),
-        default=[JOB_STATUS_LABELS["new"]],
-        placeholder="Selecione um ou mais status",
-        max_selections=len(JOB_STATUS_LABELS),
-    )
-    selected_statuses = [
-        status
-        for status, label in JOB_STATUS_LABELS.items()
-        if label in selected_status_labels
-    ]
+    jobs_repository = get_jobs_repository()
+    filters = render_dashboard_filters()
 
-    st.write("Score")
-    minimum_score = st.slider(
-        "Score mínimo",
-        min_value=0,
-        max_value=100,
-        value=0,
-        step=5,
-    )
-
-    selected_classifications = st.multiselect(
-        "Classificação",
-        options=CLASSIFICATION_FILTER_LABELS,
-        default=CLASSIFICATION_FILTER_LABELS,
-        placeholder="Selecione uma ou mais classificações",
-        max_selections=len(CLASSIFICATION_FILTER_LABELS),
-    )
-
-    jobs = [
+    all_jobs = jobs_repository.list_recent(limit=10000)
+    candidate_jobs = [
         job
-        for job in jobs_repository.list_recent(limit=100)
-        if job.status in selected_statuses
+        for job in all_jobs
+        if job.status in filters.selected_statuses
+        and matches_posted_date_filter(job, filters.posted_date_filter)
     ]
     analyses_repository = AnalysesRepository(get_database_path())
     analyses_by_job_id = analyses_repository.list_by_job_ids(
-        [job.id for job in jobs if job.id is not None]
+        [job.id for job in candidate_jobs if job.id is not None]
     )
     jobs = filter_dashboard_jobs(
-        jobs,
+        candidate_jobs,
         analyses_by_job_id,
-        minimum_score=minimum_score,
-        selected_classifications=selected_classifications,
+        minimum_score=filters.minimum_score,
+        selected_classifications=filters.selected_classifications,
     )
 
     if not jobs:
         st.info("Nenhuma vaga encontrada para os filtros atuais.")
         return
 
-    st.metric("Vagas salvas", jobs_repository.count_all())
-    selected_job_id = render_jobs_summary_table(jobs, analyses_by_job_id)
-    selected_job = next((job for job in jobs if job.id == selected_job_id), jobs[0])
-    render_job_details(selected_job, analyses_by_job_id.get(selected_job.id))
+    render_dashboard_metrics(
+        total_jobs=len(candidate_jobs),
+        filtered_jobs=len(jobs),
+        analyses_by_job_id=analyses_by_job_id,
+    )
 
+    list_column, detail_column = st.columns([1.05, 1], gap="large")
+    with list_column:
+        st.subheader("Vagas")
+        selected_job_id = render_jobs_summary_table(jobs, analyses_by_job_id)
+
+    selected_job = next((job for job in jobs if job.id == selected_job_id), jobs[0])
+    with detail_column:
+        render_job_details(selected_job, analyses_by_job_id.get(selected_job.id))
+
+
+def render_applications() -> None:
+    st.header("Candidaturas")
+    st.caption("Acompanhe as vagas em que voce ja se candidatou.")
+
+    jobs_repository = get_jobs_repository()
+    applied_jobs = jobs_repository.list_applied(limit=500)
+    if not applied_jobs:
+        st.info("Nenhuma candidatura marcada ainda.")
+        return
+
+    analyses_repository = AnalysesRepository(get_database_path())
+    analyses_by_job_id = analyses_repository.list_by_job_ids(
+        [job.id for job in applied_jobs if job.id is not None]
+    )
+    application_metadata = get_jobs_application_metadata(
+        [job.id for job in applied_jobs if job.id is not None]
+    )
+
+    list_column, detail_column = st.columns([1.05, 1], gap="large")
+    with list_column:
+        selected_job_id = render_applications_table(
+            applied_jobs,
+            analyses_by_job_id,
+            application_metadata,
+        )
+
+    selected_job = next((job for job in applied_jobs if job.id == selected_job_id), applied_jobs[0])
+    with detail_column:
+        render_job_details(selected_job, analyses_by_job_id.get(selected_job.id))
+
+
+def render_applications_table(
+    jobs: list[Job],
+    analyses_by_job_id: dict[int, JobAnalysis],
+    application_metadata: dict[int, dict[str, str | None]],
+) -> int | None:
+    selected_job_id = st.session_state.get("applications_selected_job_id")
+    if selected_job_id not in {job.id for job in jobs}:
+        selected_job_id = jobs[0].id
+
+    rows = [
+        {
+            "Aplicada em": format_applied_at(
+                application_metadata.get(job.id or 0, {}).get("applied_at")
+            ),
+            "Score": analyses_by_job_id[job.id].score
+            if job.id in analyses_by_job_id
+            else None,
+            "Classificacao": analyses_by_job_id[job.id].classification
+            if job.id in analyses_by_job_id
+            else "",
+            "Cargo": job.title,
+            "Empresa": job.company or "",
+            "Fonte": job.provider or "",
+            "Publicada": format_job_posted_at(job.posted_at),
+            "ID": job.id,
+        }
+        for job in jobs
+    ]
+    event = st.dataframe(
+        rows,
+        column_config={
+            "Aplicada em": st.column_config.TextColumn("Aplicada em"),
+            "Score": st.column_config.NumberColumn("Score", min_value=0, max_value=100),
+            "Classificacao": st.column_config.TextColumn("Classificacao"),
+            "Cargo": st.column_config.TextColumn("Cargo"),
+            "Empresa": st.column_config.TextColumn("Empresa"),
+            "Fonte": st.column_config.TextColumn("Fonte"),
+            "Publicada": st.column_config.TextColumn("Publicada"),
+            "ID": None,
+        },
+        hide_index=True,
+        use_container_width=True,
+        key="applications_table",
+        on_select="rerun",
+        selection_mode="single-row",
+    )
+
+    selected_indexes = event.selection.rows
+    selected_id = int(rows[selected_indexes[0]]["ID"]) if selected_indexes else selected_job_id
+    st.session_state["applications_selected_job_id"] = selected_id
+    return selected_id
+
+
+def apply_dashboard_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+        }
+        div[data-testid="stMetric"] {
+            background: rgba(148, 163, 184, 0.10);
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        div[data-testid="stMetricLabel"] p {
+            color: inherit;
+            font-size: 0.85rem;
+        }
+        .jobfit-hero {
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 10px;
+            padding: 18px 20px;
+            background: rgba(148, 163, 184, 0.08);
+            margin-bottom: 16px;
+        }
+        .jobfit-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1.35;
+            color: inherit;
+            margin-bottom: 6px;
+        }
+        .jobfit-muted {
+            opacity: 0.78;
+            font-size: 0.9rem;
+        }
+        .jobfit-badge {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            border: 1px solid transparent;
+        }
+        .jobfit-badge-apply {
+            background: #dcfce7;
+            color: #166534;
+            border-color: #bbf7d0;
+        }
+        .jobfit-badge-review {
+            background: #fef9c3;
+            color: #854d0e;
+            border-color: #fde68a;
+        }
+        .jobfit-badge-ignore {
+            background: #fee2e2;
+            color: #991b1b;
+            border-color: #fecaca;
+        }
+        .jobfit-description {
+            max-height: 420px;
+            overflow: auto;
+            white-space: pre-wrap;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 8px;
+            padding: 14px;
+            background: rgba(148, 163, 184, 0.08);
+            color: inherit;
+            line-height: 1.5;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_dashboard_filters() -> SimpleNamespace:
+    with st.container(border=True):
+        filter_columns = st.columns([1.05, 0.9, 1, 1.3])
+        with filter_columns[0]:
+            selected_status_labels = st.multiselect(
+                "Status",
+                options=list(JOB_STATUS_LABELS.values()),
+                default=[JOB_STATUS_LABELS["new"]],
+                placeholder="Selecione status",
+                max_selections=len(JOB_STATUS_LABELS),
+            )
+        with filter_columns[1]:
+            posted_date_filter = st.selectbox(
+                "Publicada",
+                options=POSTED_DATE_FILTER_LABELS,
+                index=0,
+            )
+        with filter_columns[2]:
+            minimum_score = st.slider(
+                "Score minimo",
+                min_value=0,
+                max_value=100,
+                value=0,
+                step=5,
+            )
+        with filter_columns[3]:
+            selected_classifications = st.multiselect(
+                "Classificacao",
+                options=CLASSIFICATION_FILTER_LABELS,
+                default=CLASSIFICATION_FILTER_LABELS,
+                placeholder="Selecione classificacoes",
+                max_selections=len(CLASSIFICATION_FILTER_LABELS),
+            )
+
+    selected_statuses = [
+        status
+        for status, label in JOB_STATUS_LABELS.items()
+        if label in selected_status_labels
+    ]
+    return SimpleNamespace(
+        selected_statuses=selected_statuses,
+        posted_date_filter=posted_date_filter,
+        minimum_score=minimum_score,
+        selected_classifications=selected_classifications,
+    )
+
+
+def render_dashboard_metrics(
+    *,
+    total_jobs: int,
+    filtered_jobs: int,
+    analyses_by_job_id: dict[int, JobAnalysis],
+) -> None:
+    classification_counts = {"Aplicar": 0, "Avaliar": 0, "Ignorar": 0}
+    for analysis in analyses_by_job_id.values():
+        classification_counts[analysis.classification] = (
+            classification_counts.get(analysis.classification, 0) + 1
+        )
+
+    metric_columns = st.columns(5)
+    metric_columns[0].metric("No recorte", total_jobs)
+    metric_columns[1].metric("No filtro", filtered_jobs)
+    metric_columns[2].metric("Aplicar", classification_counts.get("Aplicar", 0))
+    metric_columns[3].metric("Avaliar", classification_counts.get("Avaliar", 0))
+    metric_columns[4].metric("Ignorar", classification_counts.get("Ignorar", 0))
 
 def render_jobs_summary_table(
     jobs: list[Job],
@@ -149,6 +382,7 @@ def render_jobs_summary_table(
             "Classificacao": st.column_config.TextColumn("Classificação"),
             "Cargo": st.column_config.TextColumn("Cargo"),
             "Empresa": st.column_config.TextColumn("Empresa"),
+            "Publicada": st.column_config.TextColumn("Publicada"),
             "Localizacao": st.column_config.TextColumn("Localização"),
             "Status": st.column_config.TextColumn("Status"),
             "ID": None,
@@ -175,6 +409,7 @@ def build_dashboard_summary_row(
         "Classificacao": analysis.classification if analysis else "",
         "Cargo": job.title,
         "Empresa": job.company or "",
+        "Publicada": format_job_posted_at(job.posted_at),
         "Localizacao": job.location or "",
         "Status": format_job_status(job.status),
         "ID": job.id,
@@ -182,45 +417,223 @@ def build_dashboard_summary_row(
 
 
 def render_job_details(job: Job, analysis: JobAnalysis | None) -> None:
-    st.subheader("Detalhes da vaga")
+    classification = analysis.classification if analysis else "Sem score"
+    score_label = str(analysis.score) if analysis else "-"
 
-    st.write(f"**{job.title}**")
-    st.caption(" | ".join(item for item in [job.company, job.location, job.provider] if item))
+    st.subheader("Detalhes")
+    st.markdown(
+        f"""
+        <div class="jobfit-hero">
+            <div class="jobfit-title">{escape_html(job.title)}</div>
+            <div class="jobfit-muted">{escape_html(format_job_meta(job))}</div>
+            <div style="margin-top: 12px;">
+                {classification_badge(classification)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    detail_metrics = st.columns(3)
-    detail_metrics[0].metric("Score", analysis.score if analysis else "Sem score")
-    detail_metrics[1].metric("Classificação", analysis.classification if analysis else "-")
-    detail_metrics[2].metric("Status", format_job_status(job.status))
+    metric_columns = st.columns(3)
+    metric_columns[0].metric("Score", score_label)
+    metric_columns[1].metric("Classificacao", classification)
+    metric_columns[2].metric("Status", format_job_status(job.status))
 
     if job.job_url:
-        st.link_button("Abrir vaga", job.job_url)
+        st.link_button("Abrir vaga original", job.job_url, use_container_width=True)
+    render_application_action(job)
 
-    if analysis:
-        if analysis.recommendation_reason:
-            st.write(f"**Motivo:** {analysis.recommendation_reason}")
+    overview_tab, analysis_tab, description_tab = st.tabs(
+        ["Resumo", "Analise do score", "Descricao da vaga"]
+    )
 
-        strengths_column, gaps_column = st.columns(2)
-        with strengths_column:
-            st.write("**Pontos fortes**")
-            render_text_list(analysis.strengths, "Nenhum ponto forte calculado.")
-        with gaps_column:
-            st.write("**Gaps**")
-            render_text_list(analysis.gaps, "Nenhum gap calculado.")
+    with overview_tab:
+        render_job_overview(job, analysis)
 
-        terms_column, missing_column = st.columns(2)
-        with terms_column:
-            st.write("**Termos encontrados**")
-            render_text_list(analysis.matched_terms, "Nenhum termo encontrado.")
-        with missing_column:
-            st.write("**Termos ausentes**")
-            render_text_list(analysis.missing_terms, "Nenhum termo ausente.")
-    else:
+    with analysis_tab:
+        render_job_analysis_details(analysis)
+
+    with description_tab:
+        render_job_description(job.description)
+
+
+def render_job_overview(job: Job, analysis: JobAnalysis | None) -> None:
+    with st.container(border=True):
+        st.write("**Informacoes da vaga**")
+        overview_rows = [
+            {"Campo": "Cargo", "Valor": job.title},
+            {"Campo": "Empresa", "Valor": job.company or "-"},
+            {"Campo": "Localizacao", "Valor": job.location or "-"},
+            {"Campo": "Publicada em", "Valor": format_job_posted_at(job.posted_at)},
+            {"Campo": "Modalidade", "Valor": job.work_mode or "-"},
+            {"Campo": "Senioridade", "Valor": job.seniority or "-"},
+            {"Campo": "Fonte", "Valor": job.provider or "-"},
+        ]
+        st.dataframe(overview_rows, hide_index=True, use_container_width=True)
+
+    if analysis and analysis.recommendation_reason:
+        with st.container(border=True):
+            st.write("**Motivo da recomendacao**")
+            st.write(analysis.recommendation_reason)
+
+
+def render_job_analysis_details(analysis: JobAnalysis | None) -> None:
+    if analysis is None:
         st.info("Esta vaga ainda nao possui score calculado.")
+        return
 
-    if job.description:
-        with st.expander("Descrição"):
-            st.write(job.description)
+    strengths_column, gaps_column = st.columns(2)
+    with strengths_column:
+        st.write("**Pontos fortes**")
+        render_signal_list(analysis.strengths, "Nenhum ponto forte calculado.")
+    with gaps_column:
+        st.write("**Pontos de atencao**")
+        render_signal_list(analysis.gaps, "Nenhum ponto de atencao calculado.")
 
+    with st.expander("Termos encontrados", expanded=False):
+        render_text_list(analysis.matched_terms, "Nenhum termo encontrado.")
+
+    with st.expander("Criterios nao confirmados", expanded=False):
+        render_text_list(analysis.missing_terms, "Nenhum criterio relevante ficou sem confirmacao.")
+
+
+def render_job_description(description: str | None) -> None:
+    display_description = extract_display_job_description(description)
+    if not display_description:
+        st.info("Descricao nao disponivel para esta vaga.")
+        return
+
+    st.markdown(
+        f'<div class="jobfit-description">{escape_html(display_description)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_application_action(job: Job) -> None:
+    if job.id is None:
+        return
+
+    application_status = get_job_application_status(job.id)
+    if application_status == "applied":
+        if st.button("Desmarcar candidatura", use_container_width=True):
+            update_job_application_status(job.id, "not_applied")
+            st.rerun()
+        return
+
+    if st.button("Marcar como aplicada", type="primary", use_container_width=True):
+        update_job_application_status(job.id, "applied")
+        st.rerun()
+
+
+def get_jobs_repository():  # type: ignore[no-untyped-def]
+    import repositories.jobs_repository as jobs_repository_module
+
+    reloaded_jobs_repository = reload(jobs_repository_module)
+    return reloaded_jobs_repository.JobsRepository(get_database_path())
+
+
+def get_job_application_status(job_id: int) -> str:
+    metadata = get_jobs_application_metadata([job_id])
+    return metadata.get(job_id, {}).get("application_status") or "not_applied"
+
+
+def get_jobs_application_metadata(job_ids: list[int]) -> dict[int, dict[str, str | None]]:
+    if not job_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in job_ids)
+    try:
+        with connect(get_database_path()) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT id, application_status, applied_at
+                FROM jobs
+                WHERE id IN ({placeholders})
+                """,
+                job_ids,
+            ).fetchall()
+    except Exception:
+        return {}
+
+    return {
+        row["id"]: {
+            "application_status": row["application_status"],
+            "applied_at": row["applied_at"],
+        }
+        for row in rows
+    }
+
+
+def update_job_application_status(job_id: int, application_status: str) -> None:
+    applied_at_expression = (
+        "CURRENT_TIMESTAMP" if application_status == "applied" else "NULL"
+    )
+    with connect(get_database_path()) as connection:
+        connection.execute(
+            f"""
+            UPDATE jobs
+            SET application_status = ?,
+                applied_at = {applied_at_expression},
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (application_status, job_id),
+        )
+
+
+def extract_display_job_description(description: str | None) -> str:
+    if not description:
+        return ""
+
+    text = description
+    if ENRICHED_DESCRIPTION_HEADER in text:
+        text = text.split(ENRICHED_DESCRIPTION_HEADER, 1)[1]
+        text = text.lstrip(":\n\r -")
+
+    lines = []
+    for line in text.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            lines.append("")
+            continue
+        if cleaned.startswith("http://") or cleaned.startswith("https://"):
+            continue
+        if "linkedin.com/" in cleaned or "indeed.com/" in cleaned or "glassdoor.com/" in cleaned:
+            continue
+        lines.append(cleaned)
+
+    return "\n".join(lines).strip()
+
+
+def format_job_meta(job: Job) -> str:
+    return " | ".join(
+        item
+        for item in [job.company, job.location, job.provider]
+        if item
+    ) or "Sem empresa ou localizacao informada"
+
+
+def classification_badge(classification: str) -> str:
+    badge_class = {
+        "Aplicar": "jobfit-badge-apply",
+        "Avaliar": "jobfit-badge-review",
+        "Ignorar": "jobfit-badge-ignore",
+    }.get(classification, "")
+    return (
+        f'<span class="jobfit-badge {badge_class}">'
+        f'{escape_html(classification)}</span>'
+    )
+
+
+def escape_html(value: object) -> str:
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#x27;")
+    )
 
 def render_text_list(items: list[str], empty_message: str) -> None:
     cleaned_items = [item.strip() for item in items if item.strip()]
@@ -230,6 +643,17 @@ def render_text_list(items: list[str], empty_message: str) -> None:
 
     for item in cleaned_items:
         st.markdown(f"- {item}")
+
+
+def render_signal_list(items: list[str], empty_message: str) -> None:
+    cleaned_items = [item.strip() for item in items if item.strip()]
+    if not cleaned_items:
+        st.caption(empty_message)
+        return
+
+    for index, item in enumerate(cleaned_items, 1):
+        with st.container(border=True):
+            st.markdown(f"**{index}.** {item}")
 
 
 def render_settings() -> None:
@@ -604,37 +1028,10 @@ def render_sync() -> None:
     else:
         st.warning("Arquivo de credenciais ainda nao encontrado.")
 
-    st.subheader("Label ativa")
+    st.subheader("Resumo")
     if not active_sources:
         st.info("Nenhuma fonte ativa configurada.")
         return
-
-    st.dataframe(
-        [
-            {
-                "Fonte": source.name,
-                "Label Gmail": source.gmail_label_name,
-            }
-            for source in active_sources
-        ],
-        hide_index=True,
-        use_container_width=True,
-    )
-
-    if st.button("Validar labels no Gmail"):
-        validate_gmail_labels(active_sources)
-
-    st.subheader("Coleta")
-    max_results = st.number_input(
-        "Limite de e-mails por label",
-        min_value=1,
-        max_value=100,
-        value=25,
-        step=5,
-    )
-
-    if st.button("Buscar novos e-mails"):
-        sync_gmail_messages(int(max_results))
 
     email_metric, pending_metric, error_metric, jobs_metric, analyses_metric = st.columns(5)
     email_metric.metric("E-mails salvos", messages_repository.count_all())
@@ -652,63 +1049,115 @@ def render_sync() -> None:
         count_jobs_by_status(jobs_repository, "incompatible"),
     )
 
-    st.subheader("Processamento")
-    process_limit = st.number_input(
-        "Limite de e-mails para processar",
-        min_value=1,
-        max_value=100,
-        value=50,
-        step=5,
-    )
+    st.subheader("Atualizacao")
+    st.caption("Busca e-mails, processa vagas, limpa duplicadas/antigas e recalcula scores.")
+    if st.button("Atualizar vagas", type="primary", use_container_width=True):
+        update_daily_jobs()
 
-    if st.button("Processar e-mails salvos"):
-        process_saved_emails(int(process_limit))
-
-    if st.button("Reprocessar e-mails com erro"):
-        reprocess_failed_emails(int(process_limit))
-
-    if st.button("Reprocessar e-mails ja processados"):
-        reprocess_processed_emails(int(process_limit))
-
-    st.subheader("Limpeza")
-    max_age_days = st.number_input(
-        "Idade maxima da vaga em dias",
-        min_value=1,
-        max_value=365,
-        value=45,
-        step=5,
-    )
-
-    if st.button("Limpar e deduplicar vagas"):
-        cleanup_jobs(int(max_age_days))
-
-    st.subheader("Score")
     render_scoring_criteria_summary()
     render_score_analysis_summary(analyses_repository)
 
-    if st.button("Recalcular scores"):
-        score_jobs()
+    with st.expander("Avancado"):
+        st.write("**Fonte ativa**")
+        st.dataframe(
+            [
+                {
+                    "Fonte": source.name,
+                    "Label Gmail": source.gmail_label_name,
+                }
+                for source in active_sources
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        if st.button("Validar labels no Gmail"):
+            validate_gmail_labels(active_sources)
+
+        max_results = st.number_input(
+            "Limite de e-mails por label",
+            min_value=1,
+            max_value=100,
+            value=25,
+            step=5,
+        )
+        process_limit = st.number_input(
+            "Limite de e-mails para processar",
+            min_value=1,
+            max_value=100,
+            value=50,
+            step=5,
+        )
+        max_age_days = st.number_input(
+            "Idade maxima da vaga em dias",
+            min_value=1,
+            max_value=365,
+            value=45,
+            step=5,
+        )
+
+        advanced_columns = st.columns(2)
+        with advanced_columns[0]:
+            if st.button("Buscar novos e-mails"):
+                sync_gmail_messages(int(max_results))
+            if st.button("Processar e-mails salvos"):
+                process_saved_emails(int(process_limit))
+            if st.button("Recalcular scores"):
+                score_jobs()
+        with advanced_columns[1]:
+            if st.button("Reprocessar e-mails com erro"):
+                reprocess_failed_emails(int(process_limit))
+            if st.button("Reprocessar e-mails ja processados"):
+                reprocess_processed_emails(int(process_limit))
+            if st.button("Limpar e deduplicar vagas"):
+                cleanup_jobs(int(max_age_days))
 
     st.subheader("Ultimos e-mails")
     recent_messages = messages_repository.list_recent(limit=10)
 
     if recent_messages:
+        jobs_by_email_id = count_jobs_by_email_id(jobs_repository)
         st.dataframe(
             [
                 {
-                    "Recebido em": message.received_at or "",
-                    "Assunto": message.subject or "",
-                    "Remetente": message.sender or "",
+                    "Recebido": format_received_at(message.received_at),
+                    "Assunto": shorten_text(message.subject or "", 90),
+                    "Remetente": format_sender(message.sender),
                     "Label": message.gmail_label_name,
                     "Provedor": message.detected_provider or "",
+                    "Vagas": jobs_by_email_id.get(message.id or 0, 0),
                     "Status": format_email_status(message.processed_status),
-                    "Erro": message.error_message or "",
+                    "Erro": shorten_text(message.error_message or "", 80),
                 }
                 for message in recent_messages
             ],
+            column_config={
+                "Recebido": st.column_config.TextColumn("Recebido", width="small"),
+                "Assunto": st.column_config.TextColumn("Assunto", width="large"),
+                "Remetente": st.column_config.TextColumn("Remetente", width="medium"),
+                "Label": st.column_config.TextColumn("Label", width="small"),
+                "Provedor": st.column_config.TextColumn("Provedor", width="small"),
+                "Vagas": st.column_config.NumberColumn("Vagas", width="small"),
+                "Status": st.column_config.TextColumn("Status", width="small"),
+                "Erro": st.column_config.TextColumn("Erro", width="medium"),
+            },
             hide_index=True,
             use_container_width=True,
         )
+
+
+def update_daily_jobs() -> None:
+    st.write("**1. Buscando e-mails**")
+    sync_gmail_messages(max_results_per_source=25)
+
+    st.write("**2. Processando vagas**")
+    process_saved_emails(limit=50)
+
+    st.write("**3. Limpando duplicadas e antigas**")
+    cleanup_jobs(max_age_days=45)
+
+    st.write("**4. Calculando scores**")
+    score_jobs()
 
 
 def validate_gmail_labels(active_sources: list[JobSource]) -> None:
@@ -716,6 +1165,9 @@ def validate_gmail_labels(active_sources: list[JobSource]) -> None:
 
     try:
         results = GmailService().validate_labels(label_names)
+    except GmailAuthenticationError as error:
+        st.warning(str(error))
+        return
     except GmailCredentialsMissingError as error:
         st.error(str(error))
         return
@@ -742,6 +1194,9 @@ def sync_gmail_messages(max_results_per_source: int) -> None:
         summary = GmailSyncService(get_database_path()).sync_active_sources(
             max_results_per_source=max_results_per_source
         )
+    except GmailAuthenticationError as error:
+        st.warning(str(error))
+        return
     except GmailCredentialsMissingError as error:
         st.error(str(error))
         return
@@ -835,8 +1290,45 @@ def cleanup_jobs(max_age_days: int) -> None:
     )
 
 
+def open_playwright_login_browser() -> None:
+    script_path = ROOT_DIR / "scripts" / "open_playwright_login_browser.py"
+    try:
+        subprocess.Popen(  # noqa: S603
+            [sys.executable, str(script_path)],
+            cwd=str(ROOT_DIR),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as error:
+        st.error(f"Nao foi possivel abrir o navegador de login: {error}")
+        return
+
+    st.success(
+        "Navegador aberto. Faca login nos sites necessarios e feche a janela quando terminar. "
+        "A sessao fica salva em data/playwright-profile."
+    )
+
+
 def score_jobs() -> None:
-    summary = ScoringService(get_database_path()).score_new_jobs()
+    with st.spinner("Enriquecendo descricoes das vagas e calculando scores..."):
+        try:
+            summary = ScoringService(get_database_path()).score_new_jobs(
+                enrich_descriptions=True,
+                cdp_url=os.environ.get("JOBFIT_CHROME_CDP_URL"),
+            )
+        except TypeError as error:
+            if "enrich_descriptions" not in str(error):
+                raise
+
+            import services.scoring_service as scoring_service_module
+
+            reloaded_scoring_service = reload(scoring_service_module)
+            summary = reloaded_scoring_service.ScoringService(
+                get_database_path()
+            ).score_new_jobs(
+                enrich_descriptions=True,
+                cdp_url=os.environ.get("JOBFIT_CHROME_CDP_URL"),
+            )
 
     if summary.reviewed_jobs == 0:
         st.info("Nao ha vagas novas para calcular score.")
@@ -853,7 +1345,27 @@ def score_jobs() -> None:
         st.warning("Configure perfil, preferencias ou dados reais antes de calcular scores.")
         return
 
-    st.success(f"Score recalculado para {summary.analyzed_jobs} vaga(s).")
+    message = (
+        f"Score recalculado para {summary.analyzed_jobs} vaga(s). "
+        f"Descricoes enriquecidas: {summary.enriched_jobs}/"
+        f"{summary.enrichment_attempted_jobs}."
+    )
+    if summary.enrichment_failed_jobs:
+        if summary.enrichment_login_required:
+            open_playwright_login_browser()
+        st.warning(
+            f"{message} Falha ao enriquecer {summary.enrichment_failed_jobs} vaga(s)."
+        )
+        if summary.enrichment_login_required:
+            st.info(
+                "Um navegador foi aberto para login nos sites de vagas. "
+                "Faca login, feche a janela e clique em Recalcular scores novamente."
+            )
+        if summary.enrichment_error:
+            st.caption(summary.enrichment_error)
+        return
+
+    st.success(message)
 
 
 def render_scoring_criteria_summary() -> None:
@@ -933,12 +1445,97 @@ def format_email_status(status: str) -> str:
     return EMAIL_STATUS_LABELS.get(status, status)
 
 
+def format_job_posted_at(value: str | None) -> str:
+    posted_date = parse_reliable_posted_date(value)
+    if posted_date is None:
+        return "Sem data"
+
+    return posted_date.strftime("%d/%m/%Y")
+
+
+def matches_posted_date_filter(job: Job, selected_filter: str) -> bool:
+    posted_date = parse_reliable_posted_date(job.posted_at)
+    if selected_filter == "Todas":
+        return True
+    if selected_filter == "Sem data":
+        return posted_date is None
+    if posted_date is None:
+        return False
+
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+    if selected_filter == "Hoje":
+        return posted_date == today
+    if selected_filter == "Esta semana":
+        return posted_date >= today - timedelta(days=7)
+    if selected_filter == "Este mes":
+        return posted_date.year == today.year and posted_date.month == today.month
+
+    return True
+
+
+def parse_reliable_posted_date(value: str | None) -> date | None:
+    if not value:
+        return None
+
+    cleaned = value.strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", cleaned):
+        return None
+
+    try:
+        return date.fromisoformat(cleaned)
+    except ValueError:
+        return None
+
+
+def format_received_at(value: str | None) -> str:
+    if not value:
+        return "-"
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo:
+            parsed = parsed.astimezone(ZoneInfo("America/Sao_Paulo"))
+        return parsed.strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return value
+
+
+def format_applied_at(value: str | None) -> str:
+    return format_received_at(value)
+
+
+def format_sender(value: str | None) -> str:
+    if not value:
+        return ""
+
+    return shorten_text(value.replace("<", "(").replace(">", ")"), 70)
+
+
+def shorten_text(value: str, max_length: int) -> str:
+    cleaned = " ".join(value.split())
+    if len(cleaned) <= max_length:
+        return cleaned
+
+    return f"{cleaned[: max_length - 3].rstrip()}..."
+
+
 def count_jobs_by_status(repository: JobsRepository, status: str) -> int:
     count_by_status = getattr(repository, "count_by_status", None)
     if callable(count_by_status):
         return int(count_by_status(status))
 
     return sum(1 for job in repository.list_recent(limit=10000) if job.status == status)
+
+
+def count_jobs_by_email_id(repository: JobsRepository) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for job in repository.list_recent(limit=10000):
+        if job.email_message_id is None:
+            continue
+
+        counts[job.email_message_id] = counts.get(job.email_message_id, 0) + 1
+
+    return counts
 
 
 def filter_dashboard_jobs(

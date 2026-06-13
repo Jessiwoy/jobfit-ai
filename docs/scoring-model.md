@@ -2,6 +2,8 @@
 
 Atualizado em 2026-06-11.
 
+Complemento de calibracao: [Score: Skills Transferiveis](scoring-transferable-skills.md).
+
 ## Objetivo
 
 O score do JobFit AI deve estimar se vale a pena gastar tempo abrindo e avaliando uma vaga.

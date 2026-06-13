@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from core.database import initialize_database
 from core.models import Job, Preferences, ProfileItem
@@ -195,6 +196,157 @@ def test_build_job_analysis_classifies_score_70_as_apply() -> None:
     assert analysis.classification == "Aplicar"
 
 
+def test_build_job_analysis_rewards_transferable_frontend_and_backend_skills() -> None:
+    job = _job(
+        job_id=1,
+        title="Profissional de Desenvolvimento Fullstack Junior",
+        location="Brasil",
+        seniority="junior",
+        description=(
+            "Vaga full stack com Angular ou outro framework frontend, "
+            "Python, APIs REST, HTML e CSS."
+        ),
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=["Desenvolvedor Full Stack"],
+        seniority=["Junior"],
+        technologies=["React", "TypeScript", "JavaScript", "Node", "APIs REST"],
+        locations=["Brasil"],
+    )
+    profile_items = [
+        ProfileItem(
+            id=None,
+            user_id=1,
+            item_type="technology",
+            name="React",
+            evidence="Construi interfaces React com TypeScript consumindo APIs REST.",
+        ),
+        ProfileItem(
+            id=None,
+            user_id=1,
+            item_type="technology",
+            name="Node",
+            evidence="Integrei backend e APIs usando JavaScript e Node.",
+        ),
+        ProfileItem(
+            id=None,
+            user_id=1,
+            item_type="skill",
+            name="Full Stack",
+        ),
+    ]
+
+    analysis = build_job_analysis(job, preferences, profile_items)
+
+    assert analysis.score >= 70
+    assert analysis.classification == "Aplicar"
+    assert "angular" in analysis.matched_terms
+    assert "python" in analysis.matched_terms
+
+
+def test_build_job_analysis_does_not_match_short_terms_inside_tracking_tokens() -> None:
+    job = _job(
+        job_id=1,
+        title="Profissional de Desenvolvimento Fullstack Junior",
+        description="https://www.linkedin.com/jobs/view/123?lipi=Z2e8VZlBSEOOSILsr8gFVA",
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=["Desenvolvedor Full Stack"],
+        technologies=["SEO"],
+    )
+
+    analysis = build_job_analysis(job, preferences, [])
+
+    assert "seo" not in analysis.matched_terms
+
+
+def test_build_job_analysis_handles_sparse_fullstack_linkedin_alert() -> None:
+    job = _job(
+        job_id=1,
+        title="Profissional de Desenvolvimento Fullstack Junior",
+        location="Brasil",
+        seniority="junior",
+        description=(
+            "Profissional de Desenvolvimento Fullstack Junior\n"
+            "Radix\n"
+            "Brasil\n"
+            "https://www.linkedin.com/jobs/view/4417966383/?lipi=Z2e8VZlBSEOOSILsr8gFVA"
+        ),
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=["Full Stack Developer", "Desenvolvedor Full Stack"],
+        seniority=["Junior", "Pleno"],
+        technologies=["React", "TypeScript", "JavaScript", "Node", "Full Stack"],
+        locations=["Brasil"],
+    )
+    profile_items = [
+        ProfileItem(
+            id=None,
+            user_id=1,
+            item_type="technology",
+            name="React",
+        )
+    ]
+
+    analysis = build_job_analysis(job, preferences, profile_items)
+
+    assert analysis.score >= 60
+    assert "seo" not in analysis.matched_terms
+    assert "full stack" in analysis.matched_terms
+    assert "full stack developer" not in analysis.missing_terms
+
+
+def test_missing_terms_only_reports_unconfirmed_scoring_categories() -> None:
+    job = _job(
+        job_id=1,
+        title="Desenvolvedor Frontend Junior",
+        location="Brasil",
+        seniority="junior",
+        description="Vaga com React.",
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=["Desenvolvedor Frontend", "Desenvolvedor Full Stack"],
+        seniority=["Junior", "Pleno"],
+        technologies=["React", "TypeScript", "Node"],
+        locations=["Brasil", "Santa Catarina"],
+        required_terms=["React"],
+    )
+
+    analysis = build_job_analysis(job, preferences, [])
+
+    assert "desenvolvedor full stack" not in analysis.missing_terms
+    assert "typescript" not in analysis.missing_terms
+    assert "pleno" not in analysis.missing_terms
+    assert "santa catarina" not in analysis.missing_terms
+
+
+def test_title_matching_does_not_treat_frontend_and_fullstack_as_the_same_role() -> None:
+    job = _job(
+        job_id=1,
+        title="Profissional de Desenvolvimento Fullstack Junior",
+        seniority="junior",
+    )
+    preferences = Preferences(
+        id=None,
+        user_id=1,
+        desired_titles=["Frontend Developer"],
+        seniority=["Junior"],
+    )
+
+    analysis = build_job_analysis(job, preferences, [])
+
+    assert "frontend desenvolvedor" not in analysis.matched_terms
+    assert analysis.score == 10
+
+
 def test_scoring_service_saves_analysis_for_new_jobs(tmp_path: Path) -> None:
     database_path = tmp_path / "jobfit.db"
     initialize_database(database_path)
@@ -247,6 +399,76 @@ def test_scoring_service_saves_analysis_for_new_jobs(tmp_path: Path) -> None:
     assert analysis is not None
     assert analysis.score > 0
     assert analysis.classification in {"Aplicar", "Avaliar", "Ignorar"}
+
+
+def test_scoring_service_enriches_descriptions_before_scoring(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "jobfit.db"
+    initialize_database(database_path)
+    sources_repository = JobSourcesRepository(database_path)
+    sources_repository.ensure_default_sources()
+    source = sources_repository.list_all()[0]
+    user = UserRepository(database_path).get_or_create_default_user()
+    PreferencesRepository(database_path).upsert(
+        user_id=user.id,
+        desired_titles=["Frontend Developer"],
+        seniority=[],
+        technologies=["React", "TypeScript"],
+        work_modes=[],
+        locations=[],
+        required_terms=[],
+        undesired_terms=[],
+    )
+    jobs_repository = JobsRepository(database_path)
+    jobs_repository.insert_many_ignore_existing(
+        [
+            Job(
+                id=None,
+                source_id=source.id,
+                email_message_id=None,
+                title="Frontend Developer",
+                job_url="https://example.com/jobs/frontend",
+                description="Resumo curto do email.",
+                content_hash="hash-1",
+            )
+        ]
+    )
+
+    class FakeEnrichmentService:
+        def __init__(self, database_path: Path, *, cdp_url: str | None = None) -> None:
+            self._jobs_repository = JobsRepository(database_path)
+
+        def enrich_jobs(self, jobs: list[Job]) -> SimpleNamespace:
+            for job in jobs:
+                assert job.id is not None
+                self._jobs_repository.update_description(
+                    job.id,
+                    "Descricao completa com requisitos React e TypeScript.",
+                )
+            return SimpleNamespace(
+                attempted_jobs=len(jobs),
+                enriched_jobs=len(jobs),
+                failed_jobs=0,
+                errors=[],
+            )
+
+    monkeypatch.setattr(
+        "services.scoring_service.JobDescriptionEnrichmentService",
+        FakeEnrichmentService,
+    )
+
+    summary = ScoringService(database_path).score_new_jobs(enrich_descriptions=True)
+    job = jobs_repository.list_all()[0]
+    analysis = AnalysesRepository(database_path).get_by_job_id(job.id)
+
+    assert summary.enrichment_attempted_jobs == 1
+    assert summary.enriched_jobs == 1
+    assert analysis is not None
+    assert analysis.score > 0
+    assert "react" in analysis.matched_terms
+    assert "typescript" in analysis.matched_terms
 
 
 def test_scoring_service_skips_when_no_criteria_are_configured(tmp_path: Path) -> None:

@@ -70,6 +70,8 @@ class Job:
     content_hash: str = ""
     status: str = "new"
     provider: str | None = None
+    application_status: str = "not_applied"
+    applied_at: str | None = None
 
 
 @dataclass(frozen=True)

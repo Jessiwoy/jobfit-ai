@@ -92,7 +92,9 @@ class JobsRepository:
                     source_job_id,
                     content_hash,
                     status,
-                    provider
+                    provider,
+                    application_status,
+                    applied_at
                 FROM jobs
                 ORDER BY id
                 """
@@ -132,13 +134,80 @@ class JobsRepository:
                     source_job_id,
                     content_hash,
                     status,
-                    provider
+                    provider,
+                    application_status,
+                    applied_at
                 FROM jobs
                 {status_filter}
                 ORDER BY created_at DESC
                 LIMIT ?
                 """,
                 parameters,
+            ).fetchall()
+
+        return [self._row_to_job(row) for row in rows]
+
+    def get_by_id(self, job_id: int) -> Job | None:
+        with connect(self._database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    source_id,
+                    email_message_id,
+                    title,
+                    company,
+                    location,
+                    work_mode,
+                    seniority,
+                    job_url,
+                    description,
+                    posted_at,
+                    source_job_id,
+                    content_hash,
+                    status,
+                    provider,
+                    application_status,
+                    applied_at
+                FROM jobs
+                WHERE id = ?
+                """,
+                (job_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_job(row)
+
+    def list_applied(self, limit: int = 500) -> list[Job]:
+        with connect(self._database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    source_id,
+                    email_message_id,
+                    title,
+                    company,
+                    location,
+                    work_mode,
+                    seniority,
+                    job_url,
+                    description,
+                    posted_at,
+                    source_job_id,
+                    content_hash,
+                    status,
+                    provider,
+                    application_status,
+                    applied_at
+                FROM jobs
+                WHERE application_status = 'applied'
+                ORDER BY COALESCE(applied_at, updated_at, created_at) DESC
+                LIMIT ?
+                """,
+                (limit,),
             ).fetchall()
 
         return [self._row_to_job(row) for row in rows]
@@ -153,6 +222,59 @@ class JobsRepository:
                 WHERE id = ?
                 """,
                 (status, job_id),
+            )
+
+    def update_description(self, job_id: int, description: str) -> None:
+        with connect(self._database_path) as connection:
+            connection.execute(
+                """
+                UPDATE jobs
+                SET description = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (description, job_id),
+            )
+
+    def update_application_status(self, job_id: int, application_status: str) -> None:
+        applied_at_expression = (
+            "CURRENT_TIMESTAMP" if application_status == "applied" else "NULL"
+        )
+        with connect(self._database_path) as connection:
+            connection.execute(
+                f"""
+                UPDATE jobs
+                SET application_status = ?,
+                    applied_at = {applied_at_expression},
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (application_status, job_id),
+            )
+
+    def update_details_from_page(
+        self,
+        job_id: int,
+        *,
+        title: str | None,
+        company: str | None,
+        location: str | None,
+        posted_at: str | None,
+        description: str,
+    ) -> None:
+        with connect(self._database_path) as connection:
+            connection.execute(
+                """
+                UPDATE jobs
+                SET title = COALESCE(NULLIF(?, ''), title),
+                    company = COALESCE(NULLIF(?, ''), company),
+                    location = COALESCE(NULLIF(?, ''), location),
+                    posted_at = COALESCE(NULLIF(?, ''), posted_at),
+                    description = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (title, company, location, posted_at, description, job_id),
             )
 
     @staticmethod

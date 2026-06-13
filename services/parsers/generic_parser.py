@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import date, datetime, timedelta
 
 from core.models import EmailMessage, Job
 
@@ -86,6 +87,7 @@ def build_job_from_email(
     description: str | None,
     provider: str | None,
     source_job_id_suffix: str | None = None,
+    posted_at: str | None = None,
 ) -> Job:
     source_job_id = message.gmail_message_id
     if source_job_id_suffix:
@@ -102,7 +104,7 @@ def build_job_from_email(
         seniority=_extract_term(" ".join([title, description or ""]), SENIORITY_TERMS),
         job_url=job_url,
         description=description,
-        posted_at=message.received_at,
+        posted_at=posted_at,
         source_job_id=source_job_id,
         content_hash=_content_hash(
             source_id=message.source_id,
@@ -113,6 +115,22 @@ def build_job_from_email(
         ),
         provider=provider or message.detected_provider,
     )
+
+
+def extract_relative_posted_at(text: str, reference_value: str | None) -> str | None:
+    reference_date = _parse_reference_date(reference_value)
+    if reference_date is None:
+        return None
+
+    normalized = _normalize_date_text(text)
+    if re.search(r"\b(rec[eé]m publicada|rec[eé]m publicado|hoje)\b", normalized):
+        return reference_date.isoformat()
+
+    match = re.search(r"\b(?:h[aá]\s+)?(\d+)\s+dia(?:s|\(s\))?\b", normalized)
+    if not match:
+        return None
+
+    return (reference_date - timedelta(days=int(match.group(1)))).isoformat()
 
 
 def _clean_title(value: str) -> str:
@@ -158,6 +176,20 @@ def _extract_term(text: str, terms: dict[str, str]) -> str | None:
 
 def _clean_field(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip(" -|:.")[:120]
+
+
+def _parse_reference_date(value: str | None) -> date | None:
+    if not value:
+        return None
+
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _normalize_date_text(value: str) -> str:
+    return value.lower().replace("á", "a").replace("é", "e")
 
 
 def _content_hash(

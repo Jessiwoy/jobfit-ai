@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from importlib import reload
 from pathlib import Path
 
 from core.analysis_models import JobAnalysis
@@ -13,6 +14,58 @@ from repositories.preferences_repository import PreferencesRepository
 from repositories.profile_items_repository import ProfileItemsRepository
 from repositories.user_repository import UserRepository
 
+import services.job_description_enrichment_service as enrichment_service_module
+
+ENRICHED_DESCRIPTION_HEADER = "Descricao extraida da pagina da vaga"
+JobDescriptionEnrichmentService = enrichment_service_module.JobDescriptionEnrichmentService
+JobDescriptionEnrichmentError = enrichment_service_module.JobDescriptionEnrichmentError
+
+RECOGNIZED_SKILL_TERMS = [
+    "React",
+    "React.js",
+    "React Native",
+    "Angular",
+    "Vue",
+    "Next.js",
+    "JavaScript",
+    "TypeScript",
+    "Node",
+    "Node.js",
+    "Python",
+    "Django",
+    "Flask",
+    "FastAPI",
+    "HTML",
+    "HTML5",
+    "CSS",
+    "CSS3",
+    "TailwindCSS",
+    "REST",
+    "APIs REST",
+    "GraphQL",
+    "SQL",
+    "MySQL",
+    "PostgreSQL",
+    "Docker",
+    "AWS",
+    "Git",
+    "Jest",
+    "Cypress",
+    "Frontend",
+    "Back-end",
+    "Backend",
+    "Full Stack",
+    "Fullstack",
+]
+
+TRANSFERABLE_SKILL_GROUPS = [
+    {"react", "react js", "angular", "vue", "next js", "frontend"},
+    {"javascript", "typescript", "node", "node js", "python", "apis rest", "rest"},
+    {"html", "html5", "css", "css3", "tailwindcss", "frontend"},
+    {"mysql", "postgresql", "sql"},
+    {"jest", "cypress"},
+]
+
 
 @dataclass(frozen=True)
 class ScoringSummary:
@@ -20,6 +73,11 @@ class ScoringSummary:
     analyzed_jobs: int
     skipped_jobs: int = 0
     cleared_analyses: int = 0
+    enrichment_attempted_jobs: int = 0
+    enriched_jobs: int = 0
+    enrichment_failed_jobs: int = 0
+    enrichment_error: str | None = None
+    enrichment_login_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -51,17 +109,28 @@ class ScoringCriteriaSummary:
 
 class ScoringService:
     def __init__(self, database_path: Path) -> None:
+        self._database_path = database_path
         self._jobs_repository = JobsRepository(database_path)
         self._user_repository = UserRepository(database_path)
         self._preferences_repository = PreferencesRepository(database_path)
         self._profile_items_repository = ProfileItemsRepository(database_path)
         self._analyses_repository = AnalysesRepository(database_path)
 
-    def score_new_jobs(self) -> ScoringSummary:
+    def score_new_jobs(
+        self,
+        *,
+        enrich_descriptions: bool = False,
+        cdp_url: str | None = None,
+    ) -> ScoringSummary:
         user = self._user_repository.get_or_create_default_user()
         preferences = self._preferences_repository.get_by_user_id(user.id)
         profile_items = self._profile_items_repository.list_by_user_id(user.id)
         jobs = [job for job in self._jobs_repository.list_all() if job.id and job.status == "new"]
+        enrichment_attempted_jobs = 0
+        enriched_jobs = 0
+        enrichment_failed_jobs = 0
+        enrichment_error = None
+        enrichment_login_required = False
 
         if not _has_scoring_criteria(preferences, profile_items):
             cleared_analyses = self._analyses_repository.delete_all()
@@ -72,12 +141,76 @@ class ScoringService:
                 cleared_analyses=cleared_analyses,
             )
 
+        if enrich_descriptions:
+            try:
+                if (
+                    JobDescriptionEnrichmentService
+                    is enrichment_service_module.JobDescriptionEnrichmentService
+                ):
+                    enrichment_service = reload(enrichment_service_module)
+                    service_class = enrichment_service.JobDescriptionEnrichmentService
+                else:
+                    service_class = JobDescriptionEnrichmentService
+                enrichment_summary = service_class(
+                    self._database_path,
+                    cdp_url=cdp_url,
+                ).enrich_jobs(jobs)
+                enrichment_attempted_jobs = enrichment_summary.attempted_jobs
+                enriched_jobs = enrichment_summary.enriched_jobs
+                enrichment_failed_jobs = enrichment_summary.failed_jobs
+                enrichment_login_required = bool(
+                    getattr(enrichment_summary, "login_required", False)
+                )
+                if enrichment_summary.errors:
+                    enrichment_error = "; ".join(enrichment_summary.errors[:3])
+            except enrichment_service_module.JobDescriptionEnrichmentError as error:
+                enrichment_error = str(error)
+                enrichment_login_required = _is_login_required_error(enrichment_error)
+                enrichment_failed_jobs = sum(
+                    1
+                    for job in jobs
+                    if job.id is not None
+                    and job.job_url
+                    and ENRICHED_DESCRIPTION_HEADER not in (job.description or "")
+                )
+
+            jobs = [
+                refreshed_job
+                for job in jobs
+                if job.id is not None
+                for refreshed_job in [self._jobs_repository.get_by_id(job.id)]
+                if refreshed_job is not None
+            ]
+
         for job in jobs:
             self._analyses_repository.upsert(
                 build_job_analysis(job, preferences, profile_items)
             )
 
-        return ScoringSummary(reviewed_jobs=len(jobs), analyzed_jobs=len(jobs))
+        return ScoringSummary(
+            reviewed_jobs=len(jobs),
+            analyzed_jobs=len(jobs),
+            enrichment_attempted_jobs=enrichment_attempted_jobs,
+            enriched_jobs=enriched_jobs,
+            enrichment_failed_jobs=enrichment_failed_jobs,
+            enrichment_error=enrichment_error,
+            enrichment_login_required=enrichment_login_required,
+        )
+
+    def score_job(self, job_id: int) -> JobAnalysis | None:
+        job = self._jobs_repository.get_by_id(job_id)
+        if job is None:
+            return None
+
+        user = self._user_repository.get_or_create_default_user()
+        preferences = self._preferences_repository.get_by_user_id(user.id)
+        profile_items = self._profile_items_repository.list_by_user_id(user.id)
+        if not _has_scoring_criteria(preferences, profile_items):
+            return None
+
+        analysis = build_job_analysis(job, preferences, profile_items)
+        self._analyses_repository.upsert(analysis)
+        return analysis
 
     def get_criteria_summary(self) -> ScoringCriteriaSummary:
         user = self._user_repository.get_or_create_default_user()
@@ -109,6 +242,12 @@ def build_job_analysis(
     skill_requirements = _matched_terms(job_text, _skill_vocabulary(preferences, profile_items))
     resume_supported_skills = _resume_supported_terms(
         skill_requirements,
+        preferences,
+        profile_items,
+    )
+    transferable_skills = _transferable_skill_terms(
+        skill_requirements,
+        resume_supported_skills,
         preferences,
         profile_items,
     )
@@ -151,9 +290,18 @@ def build_job_analysis(
         gaps.append("A vaga não traz requisitos técnicos claros no texto extraído.")
 
     score += _coverage_score(
+        transferable_skills,
+        skill_requirements,
+        weight=10,
+        target_matches=2,
+    )
+    if transferable_skills:
+        strengths.append("Requisitos sem match literal tem base transferivel no curriculo.")
+
+    score += _coverage_score(
         evidenced_skills,
         resume_supported_skills,
-        weight=15,
+        weight=10,
         target_matches=2,
     )
     if evidenced_skills:
@@ -200,6 +348,7 @@ def build_job_analysis(
         desired_title_matches
         + skill_requirements
         + resume_supported_skills
+        + transferable_skills
         + evidenced_skills
         + work_mode_matches
         + location_matches
@@ -253,19 +402,14 @@ def _skill_vocabulary(
     profile_skill_terms = [
         item.name
         for item in profile_items
-        if item.item_type
-        in {
-            "technology",
-            "skill",
-            "experience",
-            "project",
-            "certification",
-            "language",
-        }
+        if item.item_type in {"technology", "skill", "certification", "language"}
         and item.name.strip()
     ]
     return _unique_terms(
-        preferences.technologies + preferences.required_terms + profile_skill_terms
+        RECOGNIZED_SKILL_TERMS
+        + preferences.technologies
+        + preferences.required_terms
+        + profile_skill_terms
     )
 
 
@@ -277,22 +421,13 @@ def _resume_supported_terms(
     if not job_terms:
         return []
 
-    resume_text = _profile_text(profile_items)
-    if resume_text:
-        return _unique_terms(
-            [
-                term
-                for term in job_terms
-                if any(variant in resume_text for variant in _term_variants(term))
-            ]
-        )
-
     declared_terms = _normalize(" ".join(preferences.technologies + preferences.required_terms))
+    resume_text = _normalize(" ".join([_profile_text(profile_items), declared_terms]))
     return _unique_terms(
         [
             term
             for term in job_terms
-            if any(variant in declared_terms for variant in _term_variants(term))
+            if any(_contains_term(resume_text, variant) for variant in _term_variants(term))
         ]
     )
 
@@ -306,9 +441,44 @@ def _evidenced_terms(job_terms: list[str], profile_items: list[ProfileItem]) -> 
         [
             term
             for term in job_terms
-            if any(variant in evidence_text for variant in _term_variants(term))
+            if any(_contains_term(evidence_text, variant) for variant in _term_variants(term))
         ]
     )
+
+
+def _transferable_skill_terms(
+    skill_requirements: list[str],
+    resume_supported_skills: list[str],
+    preferences: Preferences,
+    profile_items: list[ProfileItem],
+) -> list[str]:
+    unsupported_requirements = [
+        term for term in skill_requirements if term not in resume_supported_skills
+    ]
+    if not unsupported_requirements:
+        return []
+
+    resume_text = _profile_text(profile_items)
+    if not resume_text:
+        resume_text = _normalize(" ".join(preferences.technologies + preferences.required_terms))
+
+    transferable = []
+    for requirement in unsupported_requirements:
+        requirement_variants = _term_variants(requirement)
+        for group in TRANSFERABLE_SKILL_GROUPS:
+            if not requirement_variants & group:
+                continue
+
+            related_terms = group - requirement_variants
+            if any(
+                _contains_term(resume_text, variant)
+                for term in related_terms
+                for variant in _term_variants(term)
+            ):
+                transferable.append(requirement)
+                break
+
+    return _unique_terms(transferable)
 
 
 def _profile_text(profile_items: list[ProfileItem]) -> str:
@@ -392,14 +562,24 @@ def _title_tokens_match(title_text: str, desired_title: str) -> bool:
     if not desired_tokens:
         return False
 
-    matched_tokens = [
+    matched_tokens = {
         token
         for token in desired_tokens
-        if any(variant in title_text for variant in _term_variants(token))
-    ]
+        if any(_contains_term(title_text, variant) for variant in _term_variants(token))
+    }
 
-    if {"react", "frontend", "front end", "fullstack", "full stack"} & set(desired_tokens):
-        return bool(matched_tokens)
+    distinctive_tokens = {
+        "react",
+        "frontend",
+        "front end",
+        "backend",
+        "back end",
+        "fullstack",
+        "full stack",
+    }
+    desired_distinctive_tokens = distinctive_tokens & desired_tokens
+    if desired_distinctive_tokens:
+        return bool(matched_tokens & desired_distinctive_tokens)
 
     return len(matched_tokens) >= min(2, len(desired_tokens))
 
@@ -423,29 +603,40 @@ def _matched_terms(text: str, terms: list[str]) -> list[str]:
         if not normalized_term:
             continue
 
-        if any(variant in text for variant in _term_variants(normalized_term)):
+        if any(_contains_term(text, variant) for variant in _term_variants(normalized_term)):
             matches.append(normalized_term)
 
     return _unique_terms(matches)
 
 
 def _missing_terms(preferences: Preferences, matched_terms: list[str]) -> list[str]:
-    expected_terms = (
-        preferences.desired_titles
-        + preferences.technologies
-        + preferences.work_modes
-        + preferences.locations
-        + preferences.seniority
-        + preferences.required_terms
-    )
+    missing = []
+    for category_terms in [
+        preferences.required_terms,
+        preferences.seniority,
+        preferences.work_modes,
+        preferences.locations,
+    ]:
+        if category_terms and not _has_any_matched_term(category_terms, matched_terms):
+            missing.extend(category_terms)
+
+    return _unique_terms(missing)
+
+
+def _has_any_matched_term(expected_terms: list[str], matched_terms: list[str]) -> bool:
     normalized_matches = {_normalize(term) for term in matched_terms}
-    return _unique_terms(
-        [
-            _normalize(term)
-            for term in expected_terms
-            if term.strip() and _normalize(term) not in normalized_matches
-        ]
-    )
+    for term in expected_terms:
+        normalized_term = _normalize(term)
+        if not normalized_term:
+            continue
+
+        if normalized_term in normalized_matches:
+            return True
+
+        if any(variant in normalized_matches for variant in _term_variants(normalized_term)):
+            return True
+
+    return False
 
 
 def _classification(score: int) -> str:
@@ -464,6 +655,10 @@ def _recommendation_reason(score: int, strengths: list[str], gaps: list[str]) ->
     if gaps:
         return "Baixa aderência aos critérios configurados."
     return "Poucos dados disponíveis para confirmar aderência."
+
+
+def _is_login_required_error(error_message: str | None) -> bool:
+    return bool(error_message and "exigir login" in error_message.lower())
 
 
 def _unique_terms(terms: list[str]) -> list[str]:
@@ -492,7 +687,9 @@ def _normalize(value: str | None) -> str:
     )
     normalized = re.sub(r"[-_/.,()|]+", " ", without_accents).strip().lower()
     normalized = re.sub(r"\s+", " ", normalized)
-    return normalized.replace("desenvolvedora", "desenvolvedor")
+    normalized = normalized.replace("desenvolvedora", "desenvolvedor")
+    normalized = normalized.replace("developer", "desenvolvedor")
+    return normalized
 
 
 def _term_variants(term: str) -> set[str]:
@@ -506,6 +703,7 @@ def _term_variants(term: str) -> set[str]:
         {"brasil", "brazil"},
         {"pleno", "mid level"},
         {"junior", "jr"},
+        {"desenvolvedor", "developer", "desenvolvimento"},
     ]
 
     for group in synonym_groups:
@@ -522,3 +720,11 @@ def _term_variants(term: str) -> set[str]:
         variants.add(term.replace("full stack", "fullstack"))
 
     return variants
+
+
+def _contains_term(text: str, term: str) -> bool:
+    if not text or not term:
+        return False
+
+    escaped_term = re.escape(term)
+    return re.search(rf"(?<![a-z0-9]){escaped_term}(?![a-z0-9])", text) is not None

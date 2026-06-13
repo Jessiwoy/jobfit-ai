@@ -1,4 +1,8 @@
-from app.streamlit_app import build_dashboard_summary_row, filter_dashboard_jobs
+from app.streamlit_app import (
+    build_dashboard_summary_row,
+    filter_dashboard_jobs,
+    matches_posted_date_filter,
+)
 from core.analysis_models import JobAnalysis
 from core.models import Job
 
@@ -52,17 +56,25 @@ def test_build_dashboard_summary_row_keeps_table_compact() -> None:
         "Classificacao": "Aplicar",
         "Cargo": "Job 1",
         "Empresa": "",
+        "Publicada": "Sem data",
         "Localizacao": "",
         "Status": "Nova",
         "ID": 1,
     }
 
 
-def _job(job_id: int) -> Job:
+def test_matches_posted_date_filter_uses_reliable_job_posted_date() -> None:
+    assert matches_posted_date_filter(_job(1, posted_at="2026-06-12"), "Todas") is True
+    assert matches_posted_date_filter(_job(1, posted_at=None), "Sem data") is True
+    assert matches_posted_date_filter(_job(1, posted_at="2026-06-12T10:00:00+00:00"), "Sem data")
+
+
+def _job(job_id: int, posted_at: str | None = None) -> Job:
     return Job(
         id=job_id,
         source_id=1,
         email_message_id=None,
         title=f"Job {job_id}",
+        posted_at=posted_at,
         content_hash=f"hash-{job_id}",
     )

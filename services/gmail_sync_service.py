@@ -8,6 +8,11 @@ from repositories.job_sources_repository import JobSourcesRepository
 
 from services.gmail_service import GmailCredentialsMissingError, GmailService
 
+try:
+    from services.gmail_service import GmailAuthenticationError
+except ImportError:  # pragma: no cover - compatibility with stale Streamlit reloads
+    GmailAuthenticationError = RuntimeError
+
 
 @dataclass(frozen=True)
 class GmailSourceSyncResult:
@@ -74,7 +79,7 @@ class GmailSyncService:
                         skipped_count=len(messages) - inserted_count,
                     )
                 )
-            except GmailCredentialsMissingError:
+            except (GmailAuthenticationError, GmailCredentialsMissingError):
                 raise
             except Exception as error:
                 results.append(

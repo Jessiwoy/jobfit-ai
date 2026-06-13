@@ -11,6 +11,7 @@ def test_indeed_parser_extracts_multiple_jobs_from_alert() -> None:
         gmail_message_id="msg-1",
         gmail_thread_id="thread-1",
         gmail_label_name="Job Alerts",
+        received_at="2026-06-12T10:00:00-03:00",
         raw_text="""
 Indeed Job Alert
 Jobs 1-2 of 2 new jobs
@@ -38,7 +39,9 @@ https://br.indeed.com/rc/clk/dl?jk=def
     ]
     assert jobs[0].company == "Hitss Brasil"
     assert jobs[0].location == "Remoto"
+    assert jobs[0].posted_at == "2026-06-10"
     assert jobs[1].company == "Neo Credito"
+    assert jobs[1].posted_at == "2026-06-12"
 
 
 def test_linkedin_parser_extracts_multiple_jobs_from_alert() -> None:
@@ -48,6 +51,7 @@ def test_linkedin_parser_extracts_multiple_jobs_from_alert() -> None:
         gmail_message_id="msg-1",
         gmail_thread_id="thread-1",
         gmail_label_name="Job Alerts",
+        received_at="2026-06-12T10:00:00-03:00",
         raw_text="""
 Resultados da nova pesquisa de vagas por IA
 
@@ -81,6 +85,7 @@ def test_glassdoor_parser_extracts_multiple_jobs_from_alert() -> None:
         gmail_message_id="msg-1",
         gmail_thread_id="thread-1",
         gmail_label_name="Job Alerts",
+        received_at="2026-06-12T10:00:00-03:00",
         raw_text="""
 Alerta de vaga: Desenvolvedor React
 Seus anuncios de vagas - 8 de junho de 2026
@@ -110,3 +115,5 @@ Candidatura rapida
     ]
     assert [job.company for job in jobs] == ["Mazzatech", "Maxxi"]
     assert jobs[1].location == "Trabalho remoto"
+    assert jobs[0].posted_at == "2026-06-03"
+    assert jobs[1].posted_at == "2026-06-01"
