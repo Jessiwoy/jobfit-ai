@@ -1,8 +1,9 @@
 from pathlib import Path
 
 from core.database import connect, initialize_database
-from core.models import JobSource, ProfileItem
+from core.models import Job, JobSource, ProfileItem
 from repositories.job_sources_repository import JobSourcesRepository
+from repositories.jobs_repository import JobsRepository
 from repositories.preferences_repository import PreferencesRepository
 from repositories.profile_items_repository import ProfileItemsRepository
 from repositories.user_repository import UserRepository
@@ -160,6 +161,40 @@ def test_provider_columns_are_available_after_migrations(tmp_path: Path) -> None
 
     assert "detected_provider" in email_columns
     assert "provider" in job_columns
+
+
+def test_jobs_repository_preserves_application_tracking_fields(tmp_path: Path) -> None:
+    database_path = tmp_path / "jobfit.db"
+    initialize_database(database_path)
+    sources_repository = JobSourcesRepository(database_path)
+    sources_repository.ensure_default_sources()
+    source = sources_repository.list_all()[0]
+    jobs_repository = JobsRepository(database_path)
+    jobs_repository.insert_many_ignore_existing(
+        [
+            Job(
+                id=None,
+                source_id=source.id,
+                email_message_id=None,
+                title="Frontend Developer",
+                content_hash="hash-application",
+            )
+        ]
+    )
+    job = jobs_repository.list_all()[0]
+    assert job.created_at is not None
+
+    jobs_repository.update_application_status(job.id, "applied")
+
+    applied_job = jobs_repository.list_applied()[0]
+    assert applied_job.application_status == "applied"
+    assert applied_job.applied_at is not None
+    assert jobs_repository.list_recent_unapplied() == []
+
+    jobs_repository.update_application_status(job.id, "not_tracking")
+
+    assert jobs_repository.list_applied() == []
+    assert jobs_repository.list_recent_unapplied() == []
 
 
 def test_preferences_can_be_saved_and_loaded(tmp_path: Path) -> None:

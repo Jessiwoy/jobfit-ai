@@ -117,12 +117,14 @@ Antes de comparar textos, o sistema normaliza variações comuns:
 
 ## Camadas do Score
 
-O score máximo é 100.
+O score final máximo é 100. As camadas positivas somam até 105 pontos brutos porque skills
+transferíveis funcionam como bonificação parcial, mas o resultado final é limitado a 100.
 
 ```text
 Cargo/função compatível:                até 20 pontos
 Requisitos técnicos cobertos:           até 35 pontos
-Evidência contextual no currículo:      até 15 pontos
+Skills transferíveis:                   até 10 pontos
+Evidência contextual no currículo:      até 10 pontos
 Termos obrigatórios/prioritários:       até 10 pontos
 Senioridade compatível:                 até 10 pontos
 Modalidade compatível:                  até 5 pontos
@@ -160,9 +162,20 @@ Se há dados reais de currículo, a cobertura vem desses dados.
 
 Se ainda não há dados reais de currículo, o sistema usa tecnologias configuradas como fallback, mas adiciona um gap pedindo evidências.
 
-### 3. Evidência Contextual
+### 3. Skills Transferíveis
 
-Vale até 15 pontos.
+Vale até 10 pontos.
+
+Essa camada reconhece base técnica próxima quando a vaga pede uma skill que não aparece
+literalmente no currículo, mas pertence à mesma família de habilidade. Exemplo: Angular pode ter
+crédito parcial quando o currículo comprova React, TypeScript, JavaScript e frontend.
+
+Skills transferíveis não substituem experiência real e não removem a necessidade de revisão manual
+quando a vaga exige uma tecnologia específica.
+
+### 4. Evidência Contextual
+
+Vale até 10 pontos.
 
 Essa camada diferencia uma palavra solta de uma evidência real.
 
@@ -182,7 +195,7 @@ React aparece no currículo.
 A evidência diz que houve uso real de React em dashboard ou produto.
 ```
 
-### 4. Termos Obrigatórios ou Prioritários
+### 5. Termos Obrigatórios ou Prioritários
 
 Vale até 10 pontos.
 
@@ -196,7 +209,7 @@ React
 
 Se a vaga menciona React ou variações reconhecidas, ganha essa camada.
 
-### 5. Senioridade
+### 6. Senioridade
 
 Vale até 10 pontos.
 
@@ -204,13 +217,13 @@ Compara senioridade da vaga com senioridades aceitas.
 
 Se a vaga não informa senioridade claramente, não ganha essa camada, mas também não é descartada automaticamente.
 
-### 6. Modalidade
+### 7. Modalidade
 
 Vale até 5 pontos.
 
 Compara `Remoto`, `Híbrido` ou `Presencial` com as modalidades aceitas.
 
-### 7. Localização
+### 8. Localização
 
 Vale até 5 pontos.
 
@@ -218,7 +231,7 @@ Compara localização com as localizações aceitas.
 
 `Brasil` aceita cidades brasileiras e vagas remotas no Brasil quando não há conflito claro.
 
-### 8. Termos Indesejados
+### 9. Termos Indesejados
 
 Penaliza 15 pontos.
 
@@ -252,10 +265,16 @@ Essa penalização é forte porque representa descarte explícito.
 
 ## Limitações
 
-O score depende da qualidade do texto extraído do e-mail.
+O score depende da qualidade do texto extraído da página da vaga.
 
-Alertas de vaga muitas vezes trazem descrições incompletas. Nesses casos, o score pode subestimar uma vaga boa.
+Os e-mails de alerta devem ser tratados principalmente como fonte dos links das vagas. Quando a
+vaga possui link original, o fluxo de score tenta abrir a página com Playwright, extrair título,
+empresa, localização, data de publicação e descrição completa, e então calcular o score com esse
+texto enriquecido.
 
-O sistema não acessa sites de vaga para enriquecer descrição, evitando scraping agressivo.
+Se a página exigir login, bloquear acesso ou não expor uma descrição confiável, o score pode ficar
+limitado ao texto já salvo. Nesses casos, a vaga deve ser revisada manualmente antes de descarte.
+
+O sistema não automatiza candidatura e não varre sites de vaga fora dos links recebidos por e-mail.
 
 O modelo ainda é determinístico. Uma camada de IA pode ser adicionada no futuro para interpretar textos ambíguos, mas deve continuar usando apenas dados reais cadastrados.

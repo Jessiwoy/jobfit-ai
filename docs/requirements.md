@@ -61,7 +61,8 @@ Extrair e salvar:
 - Empresa.
 - Localização.
 - Link da vaga.
-- Data da vaga.
+- Data de importação no JobFit.
+- Data de publicação na origem, quando disponível.
 - Descrição, quando disponível.
 
 Regras de extração:
@@ -133,7 +134,8 @@ Tabela principal:
 
 - Empresa.
 - Cargo.
-- Data.
+- Data de importação no JobFit.
+- Data de publicação na origem, quando disponível.
 - Score.
 - Classificação.
 - Link da vaga.
@@ -146,10 +148,13 @@ Filtros:
 - Empresa.
 - Fonte.
 - Classificação.
+- Data de importação por calendário.
 
 Detalhes da vaga:
 
 - Resumo.
+- Data de importação no JobFit.
+- Data de publicação na origem, quando disponível.
 - Score.
 - Pontos fortes.
 - Gaps.
