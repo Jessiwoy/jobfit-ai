@@ -204,3 +204,14 @@ Podemos configurar também:
 - Áreas a evitar.
 - Score mínimo padrão no dashboard.
 - Idade máxima da vaga em dias.
+
+## Datas Operacionais das Vagas
+
+Cada vaga deve manter duas datas com significados diferentes:
+
+- `created_at`: data em que a vaga foi importada para o JobFit. Esta é a data confiável para filtros
+  do dashboard e para a rotina diária de candidatura.
+- `posted_at`: data de publicação na origem, quando for extraída com confiança da página da vaga.
+
+Quando a data de publicação não estiver disponível ou não for confiável, a vaga continua podendo
+ser filtrada pela data de importação.

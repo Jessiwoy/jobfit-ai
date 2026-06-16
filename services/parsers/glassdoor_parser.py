@@ -6,6 +6,7 @@ import unicodedata
 from core.models import EmailMessage, Job
 
 from services.parsers.generic_parser import (
+    URL_PATTERN,
     GenericEmailParser,
     build_job_from_email,
     extract_relative_posted_at,
@@ -67,6 +68,7 @@ class GlassdoorEmailParser(GenericEmailParser):
 
     def parse(self, message: EmailMessage) -> list[Job]:
         lines = _job_listing_lines(_clean_lines(message.raw_text or ""))
+        job_urls = _extract_job_urls(message.raw_text or "")
         jobs = []
 
         for index, line_index in enumerate(_job_title_indexes(lines), 1):
@@ -87,7 +89,7 @@ class GlassdoorEmailParser(GenericEmailParser):
                     title=lines[line_index],
                     company=company,
                     location=location,
-                    job_url=None,
+                    job_url=job_urls[index - 1] if index <= len(job_urls) else None,
                     description=description,
                     provider=self.provider_name,
                     source_job_id_suffix=f"glassdoor-{index}",
@@ -199,6 +201,20 @@ def _build_description(
     posted_text: str | None,
 ) -> str:
     return "\n".join(item for item in [title, company, location, posted_text] if item)[:4000]
+
+
+def _extract_job_urls(text: str) -> list[str]:
+    urls = [match.group(0).rstrip(".,") for match in URL_PATTERN.finditer(text)]
+    glassdoor_urls = [
+        url
+        for url in urls
+        if "glassdoor." in url.lower()
+        and not any(
+            ignored in url.lower()
+            for ignored in ("/profile/", "/about/", "/member/", "unsubscribe")
+        )
+    ]
+    return glassdoor_urls or urls
 
 
 def _normalize(value: str) -> str:

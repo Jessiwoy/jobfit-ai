@@ -4,7 +4,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from importlib import reload
 from pathlib import Path
 from types import SimpleNamespace
@@ -53,14 +53,17 @@ JOB_STATUS_LABELS = {
     "incompatible": "Incompatível",
 }
 
+HIDDEN_APPLICATION_STATUSES = {"applied", "archived", "not_tracking"}
+
 EMAIL_STATUS_LABELS = {
     "new": "Novo",
     "processed": "Processado",
     "error": "Erro",
 }
 
-CLASSIFICATION_FILTER_LABELS = ["Sem score", "Aplicar", "Avaliar", "Ignorar"]
-POSTED_DATE_FILTER_LABELS = ["Todas", "Hoje", "Esta semana", "Este mes", "Sem data"]
+ACTIVE_CLASSIFICATION_FILTER_LABELS = ["Sem score", "Aplicar", "Avaliar", "Ignorar"]
+ARCHIVED_FILTER_LABEL = "Arquivadas"
+CLASSIFICATION_FILTER_LABELS = [*ACTIVE_CLASSIFICATION_FILTER_LABELS, ARCHIVED_FILTER_LABEL]
 ENRICHED_DESCRIPTION_HEADER = "Descricao extraida da pagina da vaga"
 PROFILE_EXTRACTED_PATH = ROOT_DIR / "references" / "profile-extracted.md"
 
@@ -96,12 +99,21 @@ def render_dashboard() -> None:
     jobs_repository = JobsRepository(get_database_path())
     filters = render_dashboard_filters()
 
-    all_jobs = jobs_repository.list_recent(limit=10000)
+    include_archived = ARCHIVED_FILTER_LABEL in filters.selected_classifications
+    all_jobs = list_recent_dashboard_jobs(
+        jobs_repository,
+        limit=10000,
+        include_archived=include_archived,
+    )
     candidate_jobs = [
         job
         for job in all_jobs
-        if job.status in filters.selected_statuses
-        and matches_posted_date_filter(job, filters.posted_date_filter)
+        if is_dashboard_candidate(
+            job,
+            filters.selected_statuses,
+            filters.imported_date_filter,
+            include_archived=include_archived,
+        )
     ]
     analyses_repository = AnalysesRepository(get_database_path())
     analyses_by_job_id = analyses_repository.list_by_job_ids(
@@ -131,7 +143,11 @@ def render_dashboard() -> None:
 
     selected_job = next((job for job in jobs if job.id == selected_job_id), jobs[0])
     with detail_column:
-        render_job_details(selected_job, analyses_by_job_id.get(selected_job.id))
+        render_job_details(
+            selected_job,
+            analyses_by_job_id.get(selected_job.id),
+            source="dashboard",
+        )
 
 
 def render_applications() -> None:
@@ -157,7 +173,11 @@ def render_applications() -> None:
 
     selected_job = next((job for job in applied_jobs if job.id == selected_job_id), applied_jobs[0])
     with detail_column:
-        render_job_details(selected_job, analyses_by_job_id.get(selected_job.id))
+        render_job_details(
+            selected_job,
+            analyses_by_job_id.get(selected_job.id),
+            source="applications",
+        )
 
 
 def render_applications_table(
@@ -180,6 +200,7 @@ def render_applications_table(
             "Cargo": job.title,
             "Empresa": job.company or "",
             "Fonte": job.provider or "",
+            "Vaga": external_job_url(job) or "",
             "Publicada": format_job_posted_at(job.posted_at),
             "ID": job.id,
         }
@@ -194,6 +215,7 @@ def render_applications_table(
             "Cargo": st.column_config.TextColumn("Cargo"),
             "Empresa": st.column_config.TextColumn("Empresa"),
             "Fonte": st.column_config.TextColumn("Fonte"),
+            "Vaga": st.column_config.LinkColumn("Vaga", display_text="Abrir"),
             "Publicada": st.column_config.TextColumn("Publicada"),
             "ID": None,
         },
@@ -288,7 +310,7 @@ def apply_dashboard_styles() -> None:
 
 def render_dashboard_filters() -> SimpleNamespace:
     with st.container(border=True):
-        filter_columns = st.columns([1.05, 0.9, 1, 1.3])
+        filter_columns = st.columns([1.05, 1.15, 1, 1.3])
         with filter_columns[0]:
             selected_status_labels = st.multiselect(
                 "Status",
@@ -298,10 +320,10 @@ def render_dashboard_filters() -> SimpleNamespace:
                 max_selections=len(JOB_STATUS_LABELS),
             )
         with filter_columns[1]:
-            posted_date_filter = st.selectbox(
-                "Publicada",
-                options=POSTED_DATE_FILTER_LABELS,
-                index=0,
+            imported_date_filter = st.date_input(
+                "Importada em",
+                value=datetime.now(ZoneInfo("America/Sao_Paulo")).date(),
+                format="DD/MM/YYYY",
             )
         with filter_columns[2]:
             minimum_score = st.slider(
@@ -315,7 +337,7 @@ def render_dashboard_filters() -> SimpleNamespace:
             selected_classifications = st.multiselect(
                 "Classificacao",
                 options=CLASSIFICATION_FILTER_LABELS,
-                default=CLASSIFICATION_FILTER_LABELS,
+                default=ACTIVE_CLASSIFICATION_FILTER_LABELS,
                 placeholder="Selecione classificacoes",
                 max_selections=len(CLASSIFICATION_FILTER_LABELS),
             )
@@ -327,7 +349,7 @@ def render_dashboard_filters() -> SimpleNamespace:
     ]
     return SimpleNamespace(
         selected_statuses=selected_statuses,
-        posted_date_filter=posted_date_filter,
+        imported_date_filter=imported_date_filter,
         minimum_score=minimum_score,
         selected_classifications=selected_classifications,
     )
@@ -374,6 +396,8 @@ def render_jobs_summary_table(
             "Classificacao": st.column_config.TextColumn("Classificação"),
             "Cargo": st.column_config.TextColumn("Cargo"),
             "Empresa": st.column_config.TextColumn("Empresa"),
+            "Vaga": st.column_config.LinkColumn("Vaga", display_text="Abrir"),
+            "Importada": st.column_config.TextColumn("Importada"),
             "Publicada": st.column_config.TextColumn("Publicada"),
             "Localizacao": st.column_config.TextColumn("Localização"),
             "Status": st.column_config.TextColumn("Status"),
@@ -401,6 +425,8 @@ def build_dashboard_summary_row(
         "Classificacao": analysis.classification if analysis else "",
         "Cargo": job.title,
         "Empresa": job.company or "",
+        "Vaga": external_job_url(job) or "",
+        "Importada": format_job_imported_at(getattr(job, "created_at", None)),
         "Publicada": format_job_posted_at(job.posted_at),
         "Localizacao": job.location or "",
         "Status": format_job_status(job.status),
@@ -408,7 +434,12 @@ def build_dashboard_summary_row(
     }
 
 
-def render_job_details(job: Job, analysis: JobAnalysis | None) -> None:
+def render_job_details(
+    job: Job,
+    analysis: JobAnalysis | None,
+    *,
+    source: str = "dashboard",
+) -> None:
     classification = analysis.classification if analysis else "Sem score"
     score_label = str(analysis.score) if analysis else "-"
 
@@ -431,9 +462,12 @@ def render_job_details(job: Job, analysis: JobAnalysis | None) -> None:
     metric_columns[1].metric("Classificacao", classification)
     metric_columns[2].metric("Status", format_job_status(job.status))
 
-    if job.job_url:
-        st.link_button("Abrir vaga original", job.job_url, use_container_width=True)
-    render_application_action(job)
+    job_url = external_job_url(job)
+    if job_url:
+        st.link_button("Abrir vaga", job_url, use_container_width=True)
+    else:
+        st.info("Link da vaga nao disponivel no alerta importado.")
+    render_application_action(job, source=source)
 
     overview_tab, analysis_tab, description_tab = st.tabs(
         ["Resumo", "Analise do score", "Descricao da vaga"]
@@ -456,10 +490,20 @@ def render_job_overview(job: Job, analysis: JobAnalysis | None) -> None:
             {"Campo": "Cargo", "Valor": job.title},
             {"Campo": "Empresa", "Valor": job.company or "-"},
             {"Campo": "Localizacao", "Valor": job.location or "-"},
+            {
+                "Campo": "Importada em",
+                "Valor": format_job_imported_at(getattr(job, "created_at", None)),
+            },
             {"Campo": "Publicada em", "Valor": format_job_posted_at(job.posted_at)},
             {"Campo": "Modalidade", "Valor": job.work_mode or "-"},
             {"Campo": "Senioridade", "Valor": job.seniority or "-"},
             {"Campo": "Fonte", "Valor": job.provider or "-"},
+            {
+                "Campo": "Acompanhamento",
+                "Valor": format_application_status(
+                    getattr(job, "application_status", "not_applied")
+                ),
+            },
         ]
         st.dataframe(overview_rows, hide_index=True, use_container_width=True)
 
@@ -501,20 +545,45 @@ def render_job_description(description: str | None) -> None:
     )
 
 
-def render_application_action(job: Job) -> None:
+def render_application_action(job: Job, *, source: str) -> None:
     if job.id is None:
         return
 
     jobs_repository = JobsRepository(get_database_path())
-    if job.application_status == "applied":
-        if st.button("Desmarcar candidatura", use_container_width=True):
-            jobs_repository.update_application_status(job.id, "not_applied")
+    application_status = getattr(job, "application_status", "not_applied")
+
+    if application_status == "applied":
+        button_label = (
+            "Parar de acompanhar"
+            if source == "applications"
+            else "Remover de candidaturas"
+        )
+        if st.button(button_label, use_container_width=True):
+            jobs_repository.update_application_status(job.id, "not_tracking")
             st.rerun()
         return
 
-    if st.button("Marcar como aplicada", type="primary", use_container_width=True):
-        jobs_repository.update_application_status(job.id, "applied")
-        st.rerun()
+    if application_status == "archived":
+        action_columns = st.columns(2)
+        with action_columns[0]:
+            if st.button("Restaurar vaga", type="primary", use_container_width=True):
+                jobs_repository.update_application_status(job.id, "not_applied")
+                st.rerun()
+        with action_columns[1]:
+            if st.button("Marcar como aplicada", use_container_width=True):
+                jobs_repository.update_application_status(job.id, "applied")
+                st.rerun()
+        return
+
+    action_columns = st.columns(2)
+    with action_columns[0]:
+        if st.button("Marcar como aplicada", type="primary", use_container_width=True):
+            jobs_repository.update_application_status(job.id, "applied")
+            st.rerun()
+    with action_columns[1]:
+        if st.button("Arquivar vaga", use_container_width=True):
+            jobs_repository.update_application_status(job.id, "archived")
+            st.rerun()
 
 
 def extract_display_job_description(description: str | None) -> str:
@@ -539,6 +608,20 @@ def extract_display_job_description(description: str | None) -> str:
         lines.append(cleaned)
 
     return "\n".join(lines).strip()
+
+
+def external_job_url(job: Job) -> str | None:
+    if job.job_url:
+        return job.job_url
+
+    if not job.description:
+        return None
+
+    match = re.search(r"https?://[^\s<>\")]+", job.description)
+    if not match:
+        return None
+
+    return match.group(0).rstrip(".,")
 
 
 def format_job_meta(job: Job) -> str:
@@ -1377,6 +1460,16 @@ def format_job_status(status: str) -> str:
     return JOB_STATUS_LABELS.get(status, status)
 
 
+def format_application_status(status: str | None) -> str:
+    labels = {
+        "not_applied": "Nao aplicada",
+        "applied": "Aplicada",
+        "archived": "Arquivada",
+        "not_tracking": "Nao acompanhada",
+    }
+    return labels.get(status or "not_applied", status or "not_applied")
+
+
 def format_email_status(status: str) -> str:
     return EMAIL_STATUS_LABELS.get(status, status)
 
@@ -1389,24 +1482,54 @@ def format_job_posted_at(value: str | None) -> str:
     return posted_date.strftime("%d/%m/%Y")
 
 
-def matches_posted_date_filter(job: Job, selected_filter: str) -> bool:
-    posted_date = parse_reliable_posted_date(job.posted_at)
-    if selected_filter == "Todas":
+def format_job_imported_at(value: str | None) -> str:
+    imported_date = parse_imported_date(value)
+    if imported_date is None:
+        return "Sem data"
+
+    return imported_date.strftime("%d/%m/%Y")
+
+
+def matches_imported_date_filter(job: Job, selected_date: date | None) -> bool:
+    if selected_date is None:
         return True
-    if selected_filter == "Sem data":
-        return posted_date is None
-    if posted_date is None:
+
+    return parse_imported_date(getattr(job, "created_at", None)) == selected_date
+
+
+def is_dashboard_candidate(
+    job: Job,
+    selected_statuses: list[str],
+    imported_date_filter: date | None,
+    *,
+    include_archived: bool = False,
+) -> bool:
+    application_status = getattr(job, "application_status", "not_applied")
+    if application_status in {"applied", "not_tracking"}:
         return False
 
-    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
-    if selected_filter == "Hoje":
-        return posted_date == today
-    if selected_filter == "Esta semana":
-        return posted_date >= today - timedelta(days=7)
-    if selected_filter == "Este mes":
-        return posted_date.year == today.year and posted_date.month == today.month
+    if application_status == "archived":
+        return include_archived and matches_imported_date_filter(job, imported_date_filter)
 
-    return True
+    return job.status in selected_statuses and matches_imported_date_filter(
+        job,
+        imported_date_filter,
+    )
+
+
+def parse_imported_date(value: str | None) -> date | None:
+    if not value:
+        return None
+
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+    except ValueError:
+        pass
+
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
 
 
 def parse_reliable_posted_date(value: str | None) -> date | None:
@@ -1474,6 +1597,30 @@ def count_jobs_by_email_id(repository: JobsRepository) -> dict[int, int]:
     return counts
 
 
+def list_recent_dashboard_jobs(
+    repository: JobsRepository,
+    *,
+    limit: int,
+    include_archived: bool = False,
+) -> list[Job]:
+    if include_archived:
+        return [
+            job
+            for job in repository.list_recent(limit=limit)
+            if getattr(job, "application_status", "not_applied") not in {"applied", "not_tracking"}
+        ]
+
+    list_recent_unapplied = getattr(repository, "list_recent_unapplied", None)
+    if callable(list_recent_unapplied):
+        return list_recent_unapplied(limit=limit)
+
+    return [
+        job
+        for job in repository.list_recent(limit=limit)
+        if getattr(job, "application_status", "not_applied") not in HIDDEN_APPLICATION_STATUSES
+    ]
+
+
 def filter_dashboard_jobs(
     jobs: list[Job],
     analyses_by_job_id: dict[int, JobAnalysis],
@@ -1483,14 +1630,20 @@ def filter_dashboard_jobs(
 ) -> list[Job]:
     filtered_jobs = []
     include_without_score = "Sem score" in selected_classifications
+    include_archived = ARCHIVED_FILTER_LABEL in selected_classifications
 
     for job in jobs:
         if job.id is None:
             continue
 
+        if getattr(job, "application_status", "not_applied") == "archived":
+            if include_archived:
+                filtered_jobs.append(job)
+            continue
+
         analysis = analyses_by_job_id.get(job.id)
         if analysis is None:
-            if include_without_score and minimum_score == 0:
+            if include_without_score:
                 filtered_jobs.append(job)
             continue
 

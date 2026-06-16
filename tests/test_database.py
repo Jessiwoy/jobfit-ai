@@ -182,12 +182,19 @@ def test_jobs_repository_preserves_application_tracking_fields(tmp_path: Path) -
         ]
     )
     job = jobs_repository.list_all()[0]
+    assert job.created_at is not None
 
     jobs_repository.update_application_status(job.id, "applied")
 
     applied_job = jobs_repository.list_applied()[0]
     assert applied_job.application_status == "applied"
     assert applied_job.applied_at is not None
+    assert jobs_repository.list_recent_unapplied() == []
+
+    jobs_repository.update_application_status(job.id, "not_tracking")
+
+    assert jobs_repository.list_applied() == []
+    assert jobs_repository.list_recent_unapplied() == []
 
 
 def test_preferences_can_be_saved_and_loaded(tmp_path: Path) -> None:

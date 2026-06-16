@@ -45,7 +45,8 @@ Entregas já existentes:
 - Limpeza de scores antigos quando preferências ou dados reais são alterados.
 - Resumo de critérios configurados antes do recálculo de scores.
 - Resumo de scores calculados por classificação e faixa de score.
-- Dashboard com filtros de score mínimo e classificação.
+- Dashboard com filtros de score mínimo, classificação e data de importação no JobFit.
+- Dashboard permite revisar vagas sem score usando a classificação `Sem score`.
 - Dashboard em padrão master-detail com tabela compacta e painel de detalhes da vaga selecionada.
 - Extração multi-vaga para alertas digest de LinkedIn, Indeed e Glassdoor.
 - Reprocessamento manual de e-mails já processados para reaproveitar e-mails brutos após melhoria de parser.
@@ -189,6 +190,8 @@ Escopo esperado:
 
 - Lista de vagas.
 - Filtros.
+- Filtro por data de importação no JobFit, usando calendário.
+- Visualização de vagas sem score para revisão manual.
 - Página ou seção de detalhes.
 - Link para vaga original.
 - Filtro por fonte.
@@ -197,6 +200,8 @@ Escopo esperado:
 Critério de aceite:
 
 - O usuário consegue revisar vagas rapidamente e abrir apenas as mais relevantes.
+- O usuário consegue filtrar vagas importadas em um dia específico.
+- O usuário consegue listar vagas sem score para decidir se devem ser recalculadas ou revisadas.
 
 ## Épico 8: Geração de Materiais
 

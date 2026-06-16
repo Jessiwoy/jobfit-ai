@@ -72,6 +72,7 @@ class Job:
     provider: str | None = None
     application_status: str = "not_applied"
     applied_at: str | None = None
+    created_at: str | None = None
 
 
 @dataclass(frozen=True)

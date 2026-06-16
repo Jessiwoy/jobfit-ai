@@ -130,12 +130,14 @@ Desenvolvedor(a) ReactJS
 Sao Paulo, Sao Paulo
 Candidatura rapida
 9 dia(s)
+https://www.glassdoor.com.br/job-listing/reactjs-mazzatech-JV.htm
 Maxxi
 4.4 ★
 Desenvolvedor(a) Front-end React/Next.js Pleno
 Trabalho remoto
 Candidatura rapida
 11 dia(s)
+https://www.glassdoor.com.br/job-listing/frontend-maxxi-JV.htm
 """,
         detected_provider="glassdoor",
     )
@@ -150,3 +152,5 @@ Candidatura rapida
     assert jobs[1].location == "Trabalho remoto"
     assert jobs[0].posted_at == "2026-06-03"
     assert jobs[1].posted_at == "2026-06-01"
+    assert jobs[0].job_url == "https://www.glassdoor.com.br/job-listing/reactjs-mazzatech-JV.htm"
+    assert jobs[1].job_url == "https://www.glassdoor.com.br/job-listing/frontend-maxxi-JV.htm"

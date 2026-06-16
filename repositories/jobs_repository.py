@@ -94,7 +94,8 @@ class JobsRepository:
                     status,
                     provider,
                     application_status,
-                    applied_at
+                    applied_at,
+                    created_at
                 FROM jobs
                 ORDER BY id
                 """
@@ -136,13 +137,47 @@ class JobsRepository:
                     status,
                     provider,
                     application_status,
-                    applied_at
+                    applied_at,
+                    created_at
                 FROM jobs
                 {status_filter}
                 ORDER BY created_at DESC
                 LIMIT ?
                 """,
                 parameters,
+            ).fetchall()
+
+        return [self._row_to_job(row) for row in rows]
+
+    def list_recent_unapplied(self, limit: int = 50) -> list[Job]:
+        with connect(self._database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    source_id,
+                    email_message_id,
+                    title,
+                    company,
+                    location,
+                    work_mode,
+                    seniority,
+                    job_url,
+                    description,
+                    posted_at,
+                    source_job_id,
+                    content_hash,
+                    status,
+                    provider,
+                    application_status,
+                    applied_at,
+                    created_at
+                FROM jobs
+                WHERE application_status NOT IN ('applied', 'archived', 'not_tracking')
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
             ).fetchall()
 
         return [self._row_to_job(row) for row in rows]
@@ -168,7 +203,8 @@ class JobsRepository:
                     status,
                     provider,
                     application_status,
-                    applied_at
+                    applied_at,
+                    created_at
                 FROM jobs
                 WHERE id = ?
                 """,
@@ -201,7 +237,8 @@ class JobsRepository:
                     status,
                     provider,
                     application_status,
-                    applied_at
+                    applied_at,
+                    created_at
                 FROM jobs
                 WHERE application_status = 'applied'
                 ORDER BY COALESCE(applied_at, updated_at, created_at) DESC
@@ -297,10 +334,12 @@ class JobsRepository:
             "provider": row["provider"],
             "application_status": row["application_status"],
             "applied_at": row["applied_at"],
+            "created_at": row["created_at"],
         }
         try:
             return Job(**job_data)
         except TypeError:
             job_data.pop("application_status")
             job_data.pop("applied_at")
+            job_data.pop("created_at")
             return Job(**job_data)
